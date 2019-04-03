@@ -172,6 +172,9 @@ while 1
         isproc(ibatch) = 1;
     end
 end
+
+
+
 CC = CC / ceil((Nbatch-1)/ops.nSkipCov);
 switch ops.whitening
     case 'noSpikes'

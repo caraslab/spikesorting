@@ -4,7 +4,7 @@ function caraslab_createChannelMap(savedir,probetype)
 %Create a channel map file for a specific probe type
 %
 % Input variables:
-%   savedir:    directtory to save channelmap file (-mat)
+%   savedir:    directory to save channelmap file (-mat)
 %  
 %   probetype:  specifies the probe style used for recordings
 %                   'NNBuz5x1264':  Neuronexus Buzsaki 5x12 H64LP
@@ -100,11 +100,11 @@ switch probetype
         %-----------------------------------------------------------------------
         %Left column starts 55 um above the tip,
         %and extends upwards in 20 um spacing
-        yL = 55:20:(55+20*5);
+        yL = fliplr(55:20:(55+20*5));
         
         %Right column starts 35 um above the tip,
         %and extends upward in 20 um spacing
-        yR = 35:20:(35+20*5);
+        yR = fliplr(35:20:(35+20*5));
         
         %Extra sites start 200 um above the top most site on the left,
         %and extend upwards in 200 um spacing
@@ -171,10 +171,8 @@ xcoords(deadind) = NaN;
 ycoords(deadind) = NaN;
 kcoords(deadind) = NaN;
 
-fs = 25000; % sampling frequency
-
 filename = fullfile(savedir,[probetype,'.mat']);
-save(filename,'chanMap','connected', 'xcoords', 'ycoords', 'kcoords', 'chanMap0ind', 'fs')
+save(filename,'chanMap','connected', 'xcoords', 'ycoords', 'kcoords', 'chanMap0ind')
 fprintf('Saved channel map file: %s \n',filename);
 
  

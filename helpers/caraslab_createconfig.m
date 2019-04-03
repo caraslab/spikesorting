@@ -1,8 +1,7 @@
-function caraslab_createconfig(useGPU,datadir,binarydir,chanMap,sel)
+function caraslab_createconfig(useGPU,infodir,binarydir,chanMap,sel)
 %caraslab_createconfig(useGPU,datadir,binarydir,chanMap,sel)
 %
-% This function extracts the streamed array from a -mat file, saves it as a
-% -dat file, and sets configuration parameters for kilosort.
+% This function sets configuration parameters for kilosort.
 % 
 % Input variables:
 %   useGPU:     if 1, will run the code on a Nvidia GPU (much faster, but
@@ -10,9 +9,10 @@ function caraslab_createconfig(useGPU,datadir,binarydir,chanMap,sel)
 %
 %               if 0, will run the code on built in CPU (slower)
 %
-%   datadir:    path where data (-mat) files are stored
+%   infodir:    path where info (-info) files are stored
 %
 %   binarydir:  path where binary data files (-dat) will be saved
+%               eventually
 %
 %   chanMap:    name of channel map for probe (include full path and
 %               extension)
@@ -26,7 +26,7 @@ function caraslab_createconfig(useGPU,datadir,binarydir,chanMap,sel)
 
 %Validate inputs
 narginchk(4,5)
-if ~exist(datadir,'dir')
+if ~exist(infodir,'dir')
     fprintf('\nCannot find data directory!\n')
     return
 end
@@ -57,40 +57,41 @@ end
 
 if ~sel
     %Get a list of all files in the data directory
-    files = caraslab_lsf(datadir,'*.mat');
+    files = caraslab_lsf(infodir,'*.info');
     filenames = extractfield(files,'name');
 
 elseif sel  
     %Prompt user to select file
-    [fname,~,~] = uigetfile([datadir,'*.mat'],'Select file to process');
+    [fname,~,~] = uigetfile([infodir,'*.info'],'Select file to process');
     filenames = {fname};  
 end
+
+%Load in the channel map and identify bad channels
+chandata = load(chanMap);
+badchannels = chandata.chanMap(chandata.connected == 0);
 
 
 %Loop through files
 for i = 1:numel(filenames)
-    clear temp ops
+    clear temp ops 
     
-    datafile = fullfile(datadir,filenames{i});
-     
-    %Load -mat data file
-    fprintf('Loading -mat file: %s.......\n', filenames{i})
-    tic;
-    temp = load(datafile);
-    tEnd = toc;
-    fprintf('Loaded in: %d minutes and %f seconds\n', floor(tEnd/60),rem(tEnd,60));
+    %Load -info file
+    infofile = fullfile(infodir,filenames{i});
+    temp = load(infofile,'-mat');
+    [pname,fname,~] = fileparts(infofile);
+    matfilename = fullfile(pname, strcat(fname,'.mat'))
     
+    %Save the path to the -mat data file (contains raw voltage data)
+    ops.rawdata = matfilename;
+
     %Get the sampling rate and number of channels
     ops.fs = temp.epData.streams.RSn1.fs;
-    ops.NchanTOT = numel(temp.epData.streams.RSn1.channels); %both active and dead
-    ops.Nchan = ops.NchanTOT - 1;              % number of active channels (omit if already in chanMap file)
-    ops.Nfilt = 32*floor((ops.Nchan*2)/32); % number of clusters to use (2-4 times more than Nchan, should be a multiple of 32)
-    
-    %Format the data for binary file
-    dat = int16(temp.epData.streams.RSn1.data);
+    ops.NchanTOT = numel(temp.epData.streams.RSn1.channels);    %both active and dead
+    ops.Nchan = ops.NchanTOT - numel(badchannels);              %number of active channels
+    ops.Nfilt = 32*floor((ops.Nchan*2)/32);                     % number of clusters to use (2-4 times more than Nchan, should be a multiple of 32)
     
     %Create the path for the binary file
-    [~,name,~] = fileparts(datafile);
+    [~,name,~] = fileparts(infofile);
     filepath = strcat(binarydir,name);
     if ~exist(filepath,'dir')
         [success,message,messageID] = mkdir(filepath);
@@ -105,26 +106,13 @@ for i = 1:numel(filenames)
     
     ops.fbinary = fullfile(filepath,strcat(name,'.dat')); 
     
-    %Write the data to a binary file
-    fid = fopen(ops.fbinary,'w');
-    if fid == -1
-        fprintf('Cannot create binary file!')
-        return
-    end
-    
-    fprintf('Writing binary file: %s.......\n', strcat(name,'.dat'))
-    tic;
-    fwrite(fid,dat,'int16'); %must be 16 bit integer
-    fclose(fid);
-    tEnd = toc;
-    fprintf('Finished in: %d minutes and %f seconds\n', floor(tEnd/60),rem(tEnd,60));
     
     %Define the channel map and associated parameters
     ops.chanMap  = chanMap;
+    ops.badchannels = badchannels;
     ops.criterionNoiseChannels = 0.2; % fraction of "noise" templates allowed to span all channel groups (see caraslab_createChannelMap for more info).
     
-    
-    
+   
     %Set some parameters (defaults from Kilosort repo in parentheses)
     ops.GPU                 = useGPU;   % whether to run this code on an Nvidia GPU (much faster, mexGPUall first)
     ops.parfor              = 1;        % whether to use parfor to accelerate some parts of the algorithm
@@ -154,8 +142,15 @@ for i = 1:numel(filenames)
     ops.Nrank               = 3;                        % matrix rank of spike template model (3)
     ops.nfullpasses         = 6;                        % number of complete passes through data during optimization (6)
     ops.maxFR               = 20000;                    % maximum number of spikes to extract per batch (20000)
-    ops.fshigh              = 300;                      % frequency for high pass filtering
-    % ops.fslow             = 2000;                     % frequency for low pass filtering (optional)
+    
+    %Data will be bandpass filtered before being saved as int16 data, 
+    %so here, set low value for the highpass filter, and opt out of the low
+    %pass filter (essentially- we're not filtering once the data is in
+    %kilosort).
+    %very
+    ops.fshigh              = 100;                        % frequency for high pass filtering
+    %ops.fslow              = 5000;                       % frequency for low pass filtering (optional)
+    
     ops.ntbuff              = 64;                       % samples of symmetrical buffer for whitening and spike detection
     ops.scaleproc           = 200;                      % int16 scaling of whitened data
     ops.NT                  = 32*1024+ ops.ntbuff;      % this is the batch size (try decreasing if out of memory)
@@ -203,7 +198,7 @@ for i = 1:numel(filenames)
     ops.ForceMaxRAMforDat   = 20e9; % maximum RAM the algorithm will try to use; on Windows it will autodetect.
     
     %Save configuration file
-    configfilename  = fullfile(filepath,'Config.mat');
+    configfilename  = fullfile(filepath,'config.mat');
     save(configfilename,'ops')
     fprintf('Saved configuration file: %s\n', configfilename)
 end

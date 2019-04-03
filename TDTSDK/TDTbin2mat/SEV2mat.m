@@ -351,7 +351,7 @@ for ev = 1:numel(eventNames)
         for chan = channels
             chanIndex = 1;
             matching_ch = find([file_list_temp.chan] == chan);
-            fprintf('\nProcessing channel %d \n',chan); %ML Caras edit
+            fprintf('Processing channel %d \n',chan); %ML Caras edit
         
             % loop through the chunks
             for kk = startHourFile(ii):endHourFile(ii)
