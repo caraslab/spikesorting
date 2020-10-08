@@ -1,4 +1,4 @@
-function epData = caraslab_reformat_synapse_data(Tankdir,Savedir,sel)
+function caraslab_reformat_synapse_data(Tankdir,Savedir,sel)
 %epData = caras_lab_reformat_synapse_data(Tankdir,Savedir,sel);
 %   Function to reformat and save ephys data from TDT.
 %
@@ -18,14 +18,15 @@ function epData = caraslab_reformat_synapse_data(Tankdir,Savedir,sel)
 %   Uses TDTbin2mat to reformat tank data to a matlab struct. 
 %   Two files are saved:    
 %       (1) A -mat file containing an MxN matrix of raw voltages, where 
-%               M = the number of samples, and 
-%               N = the number of channels
+%               M = the number of channels
+%               N = the number of samples
 %
 %       (2) A -info file containing supporting information, including
 %               sampling rate, epocs, and timing
 %       
 %
 %   Written by ML Caras Mar 22, 2019 
+%   patched by M Macedo-Lima 9/8/20
 
 
 %Default to cycling through all BLOCKS
@@ -52,19 +53,20 @@ if ~exist(Savedir,'dir')
     end   
 end
 
-
 if ~sel
     %Get a list of all BLOCKS in the tank directory
     BLOCKS = caraslab_lsdir(Tankdir);
-    BLOCKNAMES = extractfield(BLOCKS,'name');
+    BLOCKNAMES = {BLOCKS.name};
+    
 
 elseif sel  
-    %Prompt user to select BLOCK
-    FULLPATH = uigetdir(Tankdir,'Select BLOCK to process');
-    PathFolders = regexp(FULLPATH,filesep,'split');
-    BLOCKNAMES = PathFolders(end);  
+    %Prompt user to select folder
+    datafolders_names = uigetfile_n_dir(Tankdir,'Select data directory');
+    BLOCKNAMES = {};
+    for i=1:length(datafolders_names)
+        [~, BLOCKNAMES{end+1}, ~] = fileparts(datafolders_names{i});
+    end
 end
-
 
 %Check that at least one block has been selected
 if isempty(BLOCKNAMES)
@@ -75,44 +77,64 @@ end
 
 %For each block
 for i = 1:numel(BLOCKNAMES)
-    datafilename = [Savedir filesep BLOCKNAMES{i} '.mat'];
-    infofilename = [Savedir filesep BLOCKNAMES{i} '.info'];
-    
+    cur_path.name = BLOCKNAMES{i};
+    cur_savedir = [Savedir filesep cur_path.name];
+    datafilename = fullfile(cur_savedir, [cur_path.name '.mat']);
+    infofilename = fullfile(cur_savedir, [cur_path.name '.info']);
+%     infofilename = fullfile(cur_savedir, [cur_path.name '_info']); % MML edit
+
     %Check if datafile is already saved, and if so, ask user what to do.
-    if exist(datafilename,'file')
-        reply = input('\n Reformated file exists already. Do you want to overwrite?\n Y/N:','s');
-        
-        switch reply
-            case {'n','N','no','No','NO'}
-                continue
-        end
-    end
+%     if exist(datafilename,'file')
+%         reply = input('\n Reformated file exists already. Do you want to overwrite?\n Y/N:','s');
+%         
+%         switch reply
+%             case {'n','N','no','No','NO'}
+%                 continue
+%         end
+%     end
     
     %Convert tank data to -mat and display elapsed time
-    FULLPATH = fullfile(Tankdir,BLOCKNAMES{i});
+    FULLPATH = fullfile(Tankdir,cur_path.name);
     fprintf('\n======================================================\n')
-    fprintf('Processing ephys data, %s.......\n', BLOCKNAMES{i})
- 
-    tic;
-    epData = TDTbin2mat(FULLPATH,'TYPE',{'epocs','streams'});
-    tEnd = toc;
-    fprintf('\n~~~~~~\nFinished in: %d minutes and %f seconds\n~~~~~~\n', floor(tEnd/60),rem(tEnd,60));
+    fprintf('Processing ephys data, %s.......\n', cur_path.name)
     
+    % Try to read file. If missing, skip to the next folder
+    try
+        tic;
+        epData = TDTbin2mat(FULLPATH,'TYPE',{'epocs','streams'});
+        tEnd = toc;
+        fprintf('\n~~~~~~\nFinished in: %d minutes and %f seconds\n~~~~~~\n', floor(tEnd/60),rem(tEnd,60));
+
+    catch ME
+        if strcmp(ME.identifier, 'MATLAB:load:couldNotReadFile')
+            fprintf('\nFile not found\n')
+            continue
+        else
+            fprintf(ME.identifier)
+            fprintf(ME.message)
+            break
+        end
+    end
+
     %Save a -mat file with the raw streams
     try
         fprintf('\nSaving raw stream...')
-        rawsig = epData.streams.RSn1.data'; %rows = samples, cols = chs
-        save(datafilename,'rawsig','-v7.3')
+        mkdir([Savedir filesep cur_path.name]);
+        if ~isempty(epData.streams)
+            rawsig = epData.streams.RSn1.data; % rows = chs, cols = samples; Kilosort  likes it like this
+            save(datafilename,'rawsig','-v7.3')
+        else
+            fprintf('\nNo raw stream found in folder. Skipping...')
+            continue
+        end
         
         %Remove the data from the epData structure
         epData.streams.RSn1.data = [];
-        fprintf('\nSaving supporting information...')
+        fprintf('\nSaving supporting information...\n')
         save(infofilename,'epData','-v7.3')
             
         fprintf('\nSuccessfully saved raw data to:\n\t %s',datafilename)
         fprintf('\nSuccessfully saved supporting info to:\n\t %s',infofilename)
-        
-        
     catch
         warning('\n ** Could not save file **.\n')
         keyboard

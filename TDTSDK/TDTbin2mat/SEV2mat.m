@@ -16,8 +16,9 @@ function [data] = SEV2mat(SEV_DIR, varargin)
 %                       beginning of recording)
 %      'T2'         scalar, retrieve data ending at T2 (default = 0 for end
 %                       of recording)
-%      'CHANNEL'    integer, returns the sev data from specified channel
-%                       only (default = 0 for all channels)
+%      'CHANNEL'    integer or array, choose a single channel or array of
+%                       channels to extract from sev data (default = 0 for
+%                       all channels)
 %      'RANGES'     array of valid time range column vectors
 %      'JUSTNAMES'  boolean, retrieve only the valid event names
 %      'EVENTNAME'  string, specific event name to retrieve data from
@@ -76,10 +77,12 @@ data = [];
 ALLOWED_FORMATS = {'single','int32','int16','int8','double','int64'};
 
 xxx = exist(SEV_DIR, 'file');
+singleFile = 0;
 if xxx == 2
     % treat as single file only
     file_list = [dir(SEV_DIR)];
     SEV_DIR = [fileparts(SEV_DIR) filesep];
+    singleFile = 1;
 elseif xxx == 7
     % treat as directory 
     if strcmp(SEV_DIR(end), filesep) == 0
@@ -92,7 +95,9 @@ end
 
 nfiles = length(file_list);
 if nfiles < 1
-    warning(['no sev files found in ' SEV_DIR])
+    if VERBOSE
+        fprintf('info: no sev files in %s\n', SEV_DIR);
+    end
     return
 end
 
@@ -139,8 +144,10 @@ for i = 1:length(file_list)
     
     % event name of stream
     s = regexp(name, '_', 'split');
+    ind = cellfun(@isempty,s); s = s(~ind); % remove any empty cells, like if name is 'Raw_'
     if length(s) > 1
-        streamHeader.eventName = s{end-1};
+        nm = strcat(s{end-1}, '____'); nm = nm(1:4);
+        streamHeader.eventName = nm;
     else
         streamHeader.eventName = name;
     end
@@ -270,21 +277,24 @@ for ev = 1:numel(eventNames)
     eventName = file_list_temp(1).eventName;
     dForm = file_list_temp(1).dForm;
     
-    max_chan = max([file_list_temp.chan]);
-    min_chan = min([file_list_temp.chan]);
-    max_hour = max([file_list_temp.hour]);
-    hour_values = sort(unique([file_list_temp.hour]));
+    chan_arr = [file_list_temp.chan];
+    hour_arr = [file_list_temp.hour];
+    max_chan = max(chan_arr);
+    min_chan = min(chan_arr);
+    max_hour = max(hour_arr);
+    hour_values = sort(unique(hour_arr));
     
     % preallocate data array
-    if CHANNEL > 0
-        matching_ch = find([file_list_temp.chan] == CHANNEL);
+    if ~any(CHANNEL == 0)
+        matching_ch = find(chan_arr == min(CHANNEL));
+        if ~all(ismember(CHANNEL, chan_arr))
+            error('Channel(s) %s not found in store %s', num2str(CHANNEL(~ismember(CHANNEL, chan_arr))), eventName);
+            continue
+        end
+    elseif singleFile
+        matching_ch = 1;
     else
-        matching_ch = find([file_list_temp.chan] == min_chan);
-    end
-    
-    if CHANNEL > 0 && isempty(matching_ch)
-        warning('Channel %d not found in %s store', CHANNEL, eventName);
-        continue
+        matching_ch = find(chan_arr == min_chan);
     end
     
     % determine total samples if there is chunking
@@ -293,7 +303,7 @@ for ev = 1:numel(eventNames)
     
     npts = zeros(1, numel(hour_values));
     for jjj = hour_values
-        temp_num = intersect(find([file_list_temp.hour] == jjj), matching_ch);
+        temp_num = intersect(find(hour_arr == jjj), matching_ch);
         npts(jjj+1) = file_list_temp(temp_num).npts;
         total_samples = total_samples + npts(jjj+1);
     end
@@ -329,34 +339,33 @@ for ev = 1:numel(eventNames)
     end    
     
     % now allocate it
-    if CHANNEL > 0
-        channels = CHANNEL;
+    if ~any(CHANNEL == 0)
+        % read selected
+        channels = sort(unique(CHANNEL));
     else
-        channels = sort(unique([file_list_temp.chan]));
+        % read all
+        channels = sort(unique(chan_arr));
     end
+    
     data.(file_list_temp(1).varName).data = cell(1, numRanges);
     for jj = 1:numRanges
-        if CHANNEL > 0
-            data.(file_list_temp(1).varName).data{jj} = zeros(1, absoluteEndSample(jj) - absoluteStartSample(jj) + 1, dForm);
-        else
-            data.(file_list_temp(1).varName).data{jj} = zeros(numel(channels), absoluteEndSample(jj) - absoluteStartSample(jj) + 1, dForm);
-        end
+        data.(file_list_temp(1).varName).data{jj} = zeros(numel(channels), absoluteEndSample(jj) - absoluteStartSample(jj) + 1, dForm);
     end
     data.(file_list_temp(1).varName).channels = channels;
     
     % loop through the time ranges
     for ii = 1:numRanges
         
+        bigIndex = 1;
         % loop through the channels
         for chan = channels
             chanIndex = 1;
-            matching_ch = find([file_list_temp.chan] == chan);
-            fprintf('Processing channel %d \n',chan); %ML Caras edit
+            matching_ch = find(chan_arr == chan);
         
             % loop through the chunks
             for kk = startHourFile(ii):endHourFile(ii)
             
-                file_num = intersect(find([file_list_temp.hour] == kk), matching_ch);
+                file_num = intersect(find(hour_arr == kk), matching_ch);
                 
                 % open file
                 path = [SEV_DIR file_list_temp(file_num).name];
@@ -375,7 +384,7 @@ for ev = 1:numel(eventNames)
                 data.(varname).fs = fs;
                 
                 if kk == startHourFile(ii)
-                    firstSample = startHourSamplesToSkip(ii)-1;
+                    firstSample = startHourSamplesToSkip(ii);
                 else
                     firstSample = 0;
                 end
@@ -389,12 +398,9 @@ for ev = 1:numel(eventNames)
                 fseek(fid, firstSample*file_list_temp(file_num).itemSize, 'cof');
                 ddd = fread(fid, lastSample - firstSample, ['*' dForm])';
                 readSize = numel(ddd);
-                if CHANNEL > 0
-                    data.(varname).data{ii}(1, chanIndex:chanIndex + readSize - 1) = ddd;
-                else
-                    data.(varname).data{ii}(chan, chanIndex:chanIndex + readSize - 1) = ddd;
-                end
+                data.(varname).data{ii}(bigIndex, chanIndex:chanIndex + readSize - 1) = ddd;
                 chanIndex = chanIndex + readSize;
+                bigIndex = bigIndex + 1;
                 
                 % close file
                 fclose(fid);

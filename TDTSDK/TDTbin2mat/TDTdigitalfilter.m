@@ -7,9 +7,6 @@ function data = TDTdigitalfilter(data, STREAM, FC, varargin)
 %
 %   data    contains updated STREAM data store with digital filter applied
 %
-%   data = TDTdigitalfilter(data, STREAM, FC, 'parameter', value, ... )
-%   data = TDTdigitalfilter(DATA, STREAM, 'NOTCH', [60 120])
-%
 %   'parameter', value pairs
 %       'TYPE'      string, specifies the TYPE of filter to use
 %                       'band': bandpass filter (default if FC is two element)

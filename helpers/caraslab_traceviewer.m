@@ -22,7 +22,8 @@ figure('units','normalized','outerposition',[0 0 1 1]);
 
 %Get a list of all folders in the data directory
 folders = caraslab_lsdir(datadir);
-foldernames = extractfield(folders,'name');
+% foldernames = extractfield(folders,'name');
+foldernames = {folders.name};
 
 for i = 1:numel(foldernames)
     clear ops rawsig cleansig
@@ -52,7 +53,7 @@ for i = 1:numel(foldernames)
     load(ops.cleandata,'cleansig');   
     fprintf('done.\n')
 
-numsamples = size(cleandata,1);
+numsamples = size(cleansig,1);
 
 
 
