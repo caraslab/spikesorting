@@ -6,8 +6,6 @@ Most files are untouched, except preProcessSub.m and gpufilter.m
 Because I wanted to output a filtered file to be read by phy, I created my own gpufilter version that runs before kilosort is run. 
 So I added some options in the above files to prevent double filtering.
 
-
-
 ![](https://github.com/MouseLand/Kilosort2/blob/master/Docs/img/templates.png)
 
 Welcome to Kilosort2, a MATLAB package for spike sorting electrophysiological data up to 1024 channels. In many cases, and especially for Neuropixels probes, the automated output of Kilosort2 requires minimal manual curation.

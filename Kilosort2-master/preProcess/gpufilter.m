@@ -6,7 +6,6 @@ function datr = gpufilter(buff, ops, chanMap)
 % ops.fs and ops.fshigh are sampling and high-pass frequencies respectively
 % if ops.fslow is present, it is used as low-pass frequency (discouraged)
 
-% MML edit
 if getOr(ops, 'kilosort_filter', 1) == 0
     dataRAW = gpuArray(buff); % move int16 data to GPU
     dataRAW = dataRAW';
