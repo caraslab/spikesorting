@@ -131,9 +131,8 @@ bUseOutsideTTX = ~isempty(TTX);
 
 if ~bUseOutsideTTX
     % create TTankX object
-    h = figure('Visible', 'off', 'HandleVisibility', 'off');
     try
-        TTX = actxcontrol('TTank.X', 'Parent', h);
+        TTX = actxserver('TTank.X');
     catch ME
         if (strcmp(ME.identifier,'MATLAB:COM:InvalidProgid'))
             error(sprintf('TTankX ActiveX control not found.\nMake sure OpenDeveloper is installed, reboot your computer, and try again'));
@@ -143,7 +142,6 @@ if ~bUseOutsideTTX
 
     % connect to server
     if TTX.ConnectServer(SERVER, 'TDT2mat') ~= 1
-        close(h)
         error(['Problem connecting to server: ' SERVER])
     end
     
@@ -173,7 +171,6 @@ if ~bUseOutsideTTX
     % open tank
     if TTX.OpenTank(tank, 'R') ~= 1
         TTX.ReleaseServer;
-        close(h);
         error(['Problem opening tank: ' tank]);
     end
     
@@ -757,53 +754,52 @@ if ~strcmp(BITWISE , '')
    end
 end
 
-% check for SEV files
-if any(TYPE==4)
-    
-    blockpath = sprintf('%s%s\\%s\\', data.info.tankpath, tank, block);
-    
-    file_list = dir([blockpath '*.sev']);
-    if length(file_list) < 3
-        %if VERBOSE, disp(['info: no sev files found in ' blockpath]), end
-    else
-        eventNames = SEV2mat(blockpath, 'JUSTNAMES', true, 'VERBOSE', false);
-        for i = 1:length(eventNames)
-            if strcmp(STORE, '') ~= 1 && strcmp(eventNames{i}, STORE) ~= 1
-                continue
-            end
-            varname = eventNames{i};
-            for ii = 1:numel(varname)
-                if ii == 1
-                    if isstrprop(varname(ii), 'digit')
-                        varname(ii) = 'x';
-                    end
-                end
-                if ~isstrprop(varname(ii), 'alphanum')
-                    varname(ii) = '_';
-                end
-            end
-            %varname = matlab.lang.makeValidName(eventNames{i});
-            if ~isvarname(eventNames{i}) && VERBOSE
-                warning('%s is not a valid Matlab variable name, changing to %s', eventNames{i}, varname);
-            end
-    
-            if ~isfield(data.streams, varname)
-                if VERBOSE
-                    fprintf('SEVs found in %s.\nrunning SEV2mat to extract %s', ...
-                        blockpath, eventNames{i})
-                end
-                sev_data = SEV2mat(blockpath, 'EVENTNAME', eventNames{i}, 'VERBOSE', VERBOSE, 'RANGES', RANGES);
-                
-                if isfield(data.streams, varname)
-                    data.streams.(varname) = sev_data.eventNames{i};
-                end
-            end
-        end
-    end
-end
+% % check for SEV files (don't do this during run-time!)
+% if any(TYPE==4)
+%     
+%     blockpath = sprintf('%s%s\\%s\\', data.info.tankpath, tank, block);
+%     
+%     file_list = dir([blockpath '*.sev']);
+%     if length(file_list) < 3
+%         %if VERBOSE, disp(['info: no sev files found in ' blockpath]), end
+%     else
+%         eventNames = SEV2mat(blockpath, 'JUSTNAMES', true, 'VERBOSE', false);
+%         for i = 1:length(eventNames)
+%             if strcmp(STORE, '') ~= 1 && strcmp(eventNames{i}, STORE) ~= 1
+%                 continue
+%             end
+%             varname = eventNames{i};
+%             for ii = 1:numel(varname)
+%                 if ii == 1
+%                     if isstrprop(varname(ii), 'digit')
+%                         varname(ii) = 'x';
+%                     end
+%                 end
+%                 if ~isstrprop(varname(ii), 'alphanum')
+%                     varname(ii) = '_';
+%                 end
+%             end
+%             %varname = matlab.lang.makeValidName(eventNames{i});
+%             if ~isvarname(eventNames{i}) && VERBOSE
+%                 warning('%s is not a valid Matlab variable name, changing to %s', eventNames{i}, varname);
+%             end
+%     
+%             if ~isfield(data.streams, varname)
+%                 if VERBOSE
+%                     fprintf('SEVs found in %s.\nrunning SEV2mat to extract %s', ...
+%                         blockpath, eventNames{i})
+%                 end
+%                 sev_data = SEV2mat(blockpath, 'EVENTNAME', eventNames{i}, 'VERBOSE', VERBOSE, 'RANGES', RANGES);
+%                 
+%                 if isfield(data.streams, varname)
+%                     data.streams.(varname) = sev_data.eventNames{i};
+%                 end
+%             end
+%         end
+%     end
+% end
 
 if ~bUseOutsideTTX
     TTX.CloseTank;
     TTX.ReleaseServer;
-    close(h);
 end

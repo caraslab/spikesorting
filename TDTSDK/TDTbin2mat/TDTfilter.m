@@ -115,7 +115,7 @@ if ~isempty(VALUES)
     end
     
     time_ranges = [d.onset(valid==1)';d.offset(valid==1)'];
-
+    
     if isempty(time_ranges)
         warning('No valid time ranges found')
         data = NaN;
@@ -255,12 +255,21 @@ if ~isempty(data.streams)
     n = fieldnames(data.streams);
     for i = 1:length(n)
         fs = data.streams.(n{i}).fs;
+        sf = 1/(2.56e-6*fs);
+        td_sample = double(uint64(data.streams.(n{i}).startTime/2.56e-6));
         filtered = [];
         max_ind = max(size(data.streams.(n{i}).data));
         good_index = 1;
         for j = 1:size(time_ranges,2)
-            onset = round(time_ranges(1,j)*fs)+1;
-            offset = round(time_ranges(2,j)*fs)+1;
+            tlo_sample = double(uint64(time_ranges(1,j)/2.56e-6));
+            onset = max(round((tlo_sample-td_sample)/sf),0)+1;
+            if isinf(time_ranges(2,j))
+                offset = inf;
+            else
+                thi_sample = double(uint64(time_ranges(2,j)/2.56e-6));
+                offset = max(round((thi_sample-td_sample)/sf),0);
+            end
+            
             % throw it away if onset or offset extends beyond recording window
             if isinf(offset)
                 if onset <= max_ind && onset > 0
