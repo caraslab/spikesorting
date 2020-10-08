@@ -1,5 +1,4 @@
 # Kilosort2: automated spike sorting with drift tracking and template matching on GPUs #
-
 ### Patch notes ###
 #### Author: Matheus Macedo-Lima
 #### Version: October, 2020

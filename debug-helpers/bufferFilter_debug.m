@@ -151,4 +151,6 @@ fclose(fidC);
 % 
 % datr = flipud(datr); % reverse time
 % datr = filter(b1, a1, datr); % causal forward filter again
+
 % datr = flipud(datr); % reverse time back
+
