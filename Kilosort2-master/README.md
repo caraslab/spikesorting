@@ -1,4 +1,12 @@
 # Kilosort2: automated spike sorting with drift tracking and template matching on GPUs #
+### Patch notes ###
+#### Author: Matheus Macedo-Lima
+#### Version: October, 2020
+Most files are untouched, except preProcessSub.m and gpufilter.m
+Because I wanted to output a filtered file to be read by phy, I created my own gpufilter version that runs before kilosort is run. 
+So I added some options in the above files to prevent double filtering.
+
+
 
 ![](https://github.com/MouseLand/Kilosort2/blob/master/Docs/img/templates.png)
 
