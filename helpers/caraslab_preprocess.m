@@ -1,4 +1,4 @@
-function caraslab_preprocess(datadir,sel)
+function caraslab_preprocess(datadir,sel, start_time_optional, end_time_optional)
 %caraslab_preprocess(datadir,sel)
 %
 % This function loads in one data file at a time, removes large
@@ -20,7 +20,7 @@ function caraslab_preprocess(datadir,sel)
 %Written by ML Caras Mar 27 2019
 
 %Validate inputs
-narginchk(1,2)
+% narginchk(1,2)
 if ~exist(datadir,'dir')
     fprintf('\nCannot find data directory!\n')
     return
@@ -32,95 +32,121 @@ if nargin == 1
 end
 
 
+
+
+% if ~sel
+%     %Get a list of all folders in the data directory
+%     folders = caraslab_lsdir(datadir);
+% % %     foldernames = extractfield(folders,'name');
+%     foldernames = {folders.name};
+% 
+% elseif sel  
+%     %Prompt user to select folder
+%     pname = uigetdir(datadir,'Select data folder');
+%     [~,name] = fileparts(pname);
+%     foldernames = {name};  
+% end
+
 if ~sel
-    %Get a list of all folders in the data directory
-    folders = caraslab_lsdir(datadir);
-    foldernames = extractfield(folders,'name');
+    foldernames = {datadir};
 
 elseif sel  
-    %Prompt user to select folder
-    pname = uigetdir(datadir,'Select data folder');
-    [~,name] = fileparts(pname);
-    foldernames = {name};  
+    %Prompt user to select BLOCK
+    FULLPATH = uigetdir(datadir,'Select BLOCK to process');
+    PathFolders = regexp(FULLPATH,filesep,'split');
+%     BLOCKNAMES = caraslab_lsdir(FULLPATH);
+    BLOCKNAMES = {PathFolders(end)};
 end
-
 
 %Loop through files
 for i = 1:numel(foldernames)
     clear ops rawsig cleansig
     
     %Define the path to the current data
-    currpath = fullfile(datadir,foldernames{i});
-    
+%     currpath = fullfile(datadir,foldernames{i});
+    currpath = datadir;
     %Load in configuration file ops struct
     load(fullfile(currpath, 'config.mat'),'ops');
-        
+
     %Get sampling rate 
     fs = ops.fs;
     
     %Get number of channels and identity of bad channels
     nchans = ops.NchanTOT;
-    badchans = ops.badchannels;
-     
+%     badchans = ops.badchannels;
+    if nargin > 2
+        start_point = round(start_time_optional*fs);
+        if start_point == 0
+            start_point = 1;
+        end
+        if nargin > 3
+            end_point = round(end_time_optional*fs);
+        end
+    else
+        start_point = 0;
+    end
+
     %Load in raw voltage streams (M x N matrix),
-    %where M = num samples and N = num channels
-    load(ops.rawdata,'rawsig')
+    %where M = channel, N = samples
+    fprintf('Loading raw data... ')
+    load(ops.rawdata,'rawsig');
+%     raw_copy_debug = rawsig;
+    if start_point > 0 && end_point ==0
+        cleansig = rawsig(:,start_point:end);
+    elseif end_point > 0
+        cleansig = rawsig(:,start_point:end_point);
+    else
+        cleansig = rawsig;
+    end
+    fprintf('Done in %3.0fs!\n', toc);
+    
+    % Delining
+    fprintf('Delining filtered data... ')
+    tic
+    for ch_n = 1:size(cleansig, 2)
+        cleansig(:, ch_n) = chunkwiseDeline(cleansig(:, ch_n), fs, [60, 180, 300], 10);
+    end
+    % flip back
+    cleansig = cleansig';
+    fprintf('Done in %3.0fs!\n', toc);
 
-    %Apply artifact rejection
-    [cleansig, rejectthresh] = caraslab_artifact_reject(rawsig,fs);
-    
-    %Create bandpass filter parameters
-    hp = 300;   %High pass (Hz)
-    lp = 7000;  %Low pass (Hz)
-    [b1, a1] = butter(3, [hp/fs,lp/fs]*2, 'bandpass');
-    
-    %Filter the cleaned data
-    fprintf('Bandpass filtering cleaned data...\n')
-    cleansig = filter(b1, a1, cleansig);
-    cleansig = flipud(cleansig);
-    cleansig = filter(b1, a1, cleansig);
-    cleansig = flipud(cleansig);    
-    fprintf('done.\n');
-
-    
     %Apply common average referencing
-    fprintf('Applying common average referencing...\n')
-    [cleansig,badchans] = caraslab_CAR(cleansig,nchans,badchans);
-    fprintf('done.\n');
-    
-    
-    %Filter the raw data
-    fprintf('Bandpass filtering raw data...\n');
-    rawsig = filter(b1, a1, rawsig);
-    rawsig = flipud(rawsig);
-    rawsig = filter(b1, a1, rawsig);
-    rawsig = flipud(rawsig);   
-    fprintf('done.\n')
-    
+
+    [cleansig, goodchans] = caraslab_CAR(cleansig, ops);
+    ops.igood = goodchans;
+    fprintf('Done in %3.0fs!\n', toc);
+
+%     %Filter the raw data
+%     fprintf('Bandpass filtering raw data...\n');
+%     rawsig = filter(b1, a1, rawsig);
+%     rawsig = flipud(rawsig);
+%     rawsig = filter(b1, a1, rawsig);
+%     rawsig = flipud(rawsig);   
+%     fprintf('done.\n')
+%     
     
     %Save -mat file with cleaned data
-    [path,name,~] = fileparts(ops.rawdata);
-    cleanfilename = [path filesep name '_CLEAN.mat'];
-    fprintf('\nSaving cleaned data: %s.....',[name,'_CLEAN.csv']);
-    save(cleanfilename,cleansig,'-v7.3');
-    fprintf('done.\n');
+%     [path,name,~] = fileparts(ops.rawdata);
+%     cleanfilename = [path filesep name '_CLEAN.mat'];
+%     fprintf('\nSaving cleaned data: %s.....',[name,'_CLEAN.mat']);
+%     save(cleanfilename, 'cleansig','-v7.3');
+%     fprintf('done.\n');
     
-    %Save -mat file with filtered raw data
-    fltfilename = [path filesep name '_RAWFLT.mat'];
-    fprintf('\nSaving raw filtered data: %s.....',[name,'_RAWFLT.csv']);
-    save(fltfilename,rawsig,'-v7.3');
-    fprintf('done.\n');
+%     %Save -mat file with filtered raw data
+%     fltfilename = [path filesep name '_RAWFLT.mat'];
+%     fprintf('\nSaving raw filtered data: %s.....',[name,'_RAWFLT.csv']);
+%     save(fltfilename,rawsig,'-v7.3');
+%     fprintf('done.\n');
     
     
     %Update ops structure
     ops.cleandata = cleanfilename;   
-    ops.rawfltdata = fltfilename;
-    ops.badchannels = badchans;
+%     ops.rawfltdata = fltfilename;
+%     ops.badchannels = badchans;
+    ops.readyforsorting = cleanfilename;
     save(fullfile(currpath, 'config.mat'),'ops')
-    fprintf('Updated ops struct in config file: %s\n', configfilename)
-    
-    
-    
+    fprintf('Updated ops struct in config file: %s\n', currpath)
+
 %--------------------------------------------------------------------------    
 % NOT CURRENTLY IN USE, BUT COULD BE IMPLEMENTED AT A LATER DATE
 %--------------------------------------------------------------------------   

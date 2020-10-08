@@ -1,30 +1,68 @@
 %caraslab_phys_pipeline.m
 %
-%This pipeline transforms raw -sev data into -mat format, removes
-%artifacts, bandpass filters the data, applies common average referencing,
-%and creates16 bit binary -dat files for sorting with kilosort. Raw
-%(filtered) and cleaned (artifact removed, referenced) data streams can be
-%compared using a GUI to ensure that cleaned data look good before sorting. 
+%This pipeline transforms raw -sev data into -mat format, 
+% highpass filters the data, applies common average referencing,
+% and creates 16 bit binary -dat files for sorting with kilosort 2. Raw
+% (unfiltered) and cleaned data streams are created
+
+% Note that this pipeline was designed to be modular, i.e. you run one bit
+% at a time and you can add/remove/replace modules
+
+% Written by ML Caras
+% Patched by M Macedo-Lima 8/9/20
+
+%% Set your paths
+% Tankdir: Where your TDT tank raw files are; This path should be a
+%   subject's folder with subfolder representing different recording sessions
+% Savedir: Where you wish to save the processed files
+% Behaviordir: Where the ePsych behavior files are; -mat files will be
+%   combined into a single file. Before running this, group similar sessions
+%   into folders named: 
+%   shock_training, psych_testing, pre_passive, post_passive
+% chanMapSavedir: where your channel maps are
+% Probetype: what kind of channel map you are using
+%   Only the following have been set up:
+%               'NNBuz5x1264':  Neuronexus Buzsaki 5x12 H64LP
+%               'NN4x16Poly64': Neuronexus A4x16 Poly2 H64LP
+%               'NNA4x16Lin64': Neuronexus A4x16 Poly2 Linear H64LP
+%               'NNA2x32':     Neuronexus A2x32-5mm-25-200-177
+% sel: whether you want to run all or a subset of the folders. If 1, you
+%   will be prompted to select folders. Multiple folders can be selected
+%   using Ctrl or Shift
+% rootH: path for temp Kilosort file. Should be a fast SSD
+
+% Tankdir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/TDT tank/SUBJ-ID-28-200615-141009';
+
+% Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-13-200125-124647';  % NNBuz5x1264
+% Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-14-200126-125925';  %NNBuz5x1264
+% Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-26-200614-103221'; % NNA4x16Lin64; badchannels: 36,44,47,52,58,59,64
+% Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-27-200614-104657';  % NNA2x32; badchannels: 58:63
+Savedir =  '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-28-200615-141009'; %NNA4x16Lin64; badchannels: 8,10
+
+Probetype = 'NNA4x16Lin64'; 
+% Probetype = 'NNA2x32'; 
+
+% badchannels = [36,44,47,52,58,59,64];
+% badchannels = [58:63];
+badchannels = [8,10];
 
 
-%% MAKE A CHANNELMAP FILE
-%This function creates a channel map for a specific electrode probe array.
-%You only need to run this function if the map for your specific probe
-%doesn't already exist.
-%  
-%   probetype:  specifies the probe style used for recordings
-%                   'NNBuz5x1264':  Neuronexus Buzsaki 5x12 H64LP
-%                   'NN4x16Poly64': Neuronexus A4x16 Poly2 H64LP
-%                   'NNA4x16Lin64': Neuronexus A4x16 Linear  H64LP
-%                   'CamASSY156P':  Cambridge NeuroTech ASSY156 P Series
-%                   'NN4x4H16':     Neuronexus A4x4 200-200-1250 H16 21mm
+chanMapSavedir = '/home/caras/Documents/Matt/Spike sorting code/channelmaps';
+chanMap = [chanMapSavedir '/' Probetype '.mat']; 
 
-Savedir = '/Users/Melissa/Documents/Professional/NYU/SanesLab/ActiveProjects/OFCRecordings/ChannelMaps/';
-Probetype = 'NNBuz5x1264'; 
+% path to temporary binary file for Kilosort (same size as data, should be on fast SSD)
+rootH = '/home/matheus/Documents'; 
 
-caraslab_createChannelMap(Savedir,Probetype)
 
-%% CONVERT *.SEV AND TANK DATA TO *.MAT FILE
+sel = 1;  % Select subfolders; 0 will run all subfolders
+
+%% 1. MAKE A CHANNELMAP FILE
+% This function creates a channel map for a specific electrode probe array.
+%   You only need to run this function if the map for your specific probe
+%   doesn't already exist.
+caraslab_createChannelMap(chanMapSavedir,Probetype);
+
+%% 2. CONVERT *.SEV AND TANK DATA TO *.MAT FILE
 %   Function to reformat and save ephys data from TDT.
 %
 %   FIRST you must manually copy the .sev files from RS4 data streamer into
@@ -43,71 +81,72 @@ caraslab_createChannelMap(Savedir,Probetype)
 %   Uses TDTbin2mat to reformat tank data to a matlab struct. 
 %   Two files are saved:    
 %       (1) A -mat file containing an MxN matrix of raw voltages, where 
-%               M = the number of samples, and 
-%               N = the number of channels
+%               M = the number of channels
+%               N = the number of samples
 %
 %       (2) A -info file containing supporting information, including
 %               sampling rate, epocs, and timing
+caraslab_reformat_synapse_data(Tankdir,Savedir,sel);
 
-
-
-Tankdir = '/Users/Melissa/Documents/Professional/NYU/SanesLab/ActiveProjects/OFCRecordings/TDTTanks/';
-Savedir = '/Users/Melissa/Documents/Professional/NYU/SanesLab/ActiveProjects/OFCRecordings/MATPhysFiles/';
-sel = 0;
-
-epData = caraslab_reformat_synapse_data(Tankdir,Savedir,sel);
-
-%% CREATE KILOSORT CONFIGURATION FILE
+%% 3. CREATE KILOSORT CONFIGURATION FILE
 % This function sets configuration parameters for kilosort. It also
-% establishes the binary path for each future binary dataset.
+%   establishes the binary path for each future binary dataset.
 
-useGPU = 0; %or 1
+%   IMPORTANT: this function is a  'living' function, i.e. you should edit it
+%   appropriately for every subject if necessary
+% e.g. whether to CAR/comb filter; template size and more...
+caraslab_createconfig(Savedir,chanMap,sel, badchannels, 1)
 
-datadir = '/Users/Melissa/Documents/Professional/NYU/SanesLab/ActiveProjects/OFCRecordings/MATPhysFiles/';
-binarydir = '/Users/Melissa/Documents/Professional/NYU/SanesLab/ActiveProjects/OFCRecordings/BinaryFiles/';
-chanMap = '/Users/Melissa/Documents/Professional/NYU/SanesLab/ActiveProjects/OFCRecordings/ChannelMaps/NNBuz5x1264.mat'; 
-sel = 1; %or 0 to cycle through all files
 
-caraslab_createconfig(useGPU,datadir,binarydir,chanMap,sel)
+%% 4. CREATE *DAT BINARY FILE
+% This function detects bad channels by RMS thresholds and saves them in ops.igood
+% then it rescales and converts -mat files to 16 bit integer -dat files
+% TODO: change this to be chunkwise so it doesn't hog RAM
+caraslab_mat2dat(Savedir,sel)
 
-%% REMOVE ARTIFACTS, FILTER DATA, AND APPLY COMMON AVERAGE REFERENCING 
-%This function applies common average referencing to data. See Ludwig
-%(2009) for more details on the algorithm. The code that actually applies
-%the CAR was taken from the https://github.com/cortex-lab/spikes repo,
-%which houses code from the Harris and Carandini labs at UCL.
 
-datadir = '/Users/Melissa/Documents/Professional/NYU/SanesLab/ActiveProjects/OFCRecordings/BinaryFiles/';
-sel = 1;
+%% 5. REMOVE ARTIFACTS AND FILTER
+% This function takes .dat files and employs in this order:
+% 1. Comb filter (if ops.comb==1)
+% 2. Median-CAR filter (if ops.CAR==1)
+% 3. Kilosort GPU-based chunkwise filter
+% 4. Saves a filename_CLEAN.dat file
+caraslab_preprocessdat(Savedir, sel)
 
-caraslab_preprocess(datadir,sel)
 
-%% COMPARE RAW (FILTERED) AND CLEANED DATA
-% This function loads raw (filtered) and cleaned (filtered, artifacts
-% removed, common average referenced) data, and allows the user to compare
-% the data. Each trace should be examined for abnormalities (unexplained
-% dropouts, cells that die suddenly during a recording session, etc...).
-% Abnormalities should be noted to aid in data interpretation during and 
-% after spike sorting.
+%% 6. CONCATENATE SAME DAY RECORDINGS
+caraslab_concatenate_sameDay_recordings(Savedir,sel)
 
-datadir = '/Users/Melissa/Documents/Professional/NYU/SanesLab/ActiveProjects/OFCRecordings/BinaryFiles/';
-caraslab_traceviewer(datadir)
+%% 7. CONCATENATE SAME DEPTH RECORDINGS ACROSS DAYS
+NchanTOT = 64;
+NT = 32832;  % A reasonable batch size. Reduce if out of memory
+caraslab_concatenate_sameDepth_recordings(Savedir, sel, NchanTOT, NT)
 
-%% CREATE *DAT BINARY FILE
-% This function converts -mat files to 16 bit integer -dat files, the
-% required input format for kilosort. This function should be run as the
-% final processing step before storing data in kilosort (i.e. data should
-% already have been filtered, had common average referencing applied, and
-% had artifacts removed using caraslab_preprocess.m).
+% Create config in new folders
+caraslab_createconfig(Savedir,chanMap,sel, badchannels, 1)
 
-datadir = '/Users/Melissa/Documents/Professional/NYU/SanesLab/ActiveProjects/OFCRecordings/BinaryFiles/';
-sel = 0; %or 0;
+%% 8. RUN KILOSORT
+%   This function runs kilosort on the selected data.
+% rootH is the path to the kilosort temp file; Better if a fast SSD
+caraslab_kilosort(Savedir, sel, rootH)
 
-caraslab_mat2dat(datadir,sel)
+%% 9. GO HAVE FUN IN PHY!
+%         _             _   _                _ 
+%        | |           | | (_)              | |
+%   _ __ | |__  _   _  | |_ _ _ __ ___   ___| |
+%  | '_ \| '_ \| | | | | __| | '_ ` _ \ / _ \ |
+%  | |_) | | | | |_| | | |_| | | | | | |  __/_|
+%  | .__/|_| |_|\__, |  \__|_|_| |_| |_|\___(_)
+%  | |           __/ |                         
+%  |_|          |___/                          
 
-%% RUN KILOSORT 
-%This function runs kilosort on the selected data.
 
-datadir = '/Users/Melissa/Documents/Professional/NYU/SanesLab/ActiveProjects/OFCRecordings/BinaryFiles/';
-sel = 0; %or 0
-
-caraslab_kilosort(datadir,sel)
+%% 10. EXTRACT SPIKE TIMES AND WAVEFORM MEASUREMENTS 
+% This function retrieves timestamps and waveforms from phy files
+% Outputs are .txt files with timestamps, .csv and .pdf files with waveform
+% measurements and plots
+% Because Kilosort2 likes 150Hz high-pass filtered data, this function will
+% also refilter the data with a 300-6000Hz bandpass filter and save a new
+% ~~CLEAN300Hz.dat 
+show_plots = 1;
+get_timestamps_and_wf_measurements(Savedir, sel, show_plots)
