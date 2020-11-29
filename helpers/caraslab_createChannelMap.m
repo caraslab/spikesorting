@@ -339,7 +339,7 @@ switch probetype
         %-----------------------------------------------------------------------
         %Define the y coordinates for each channel group (in relative microns)
         %-----------------------------------------------------------------------
-        %Left column top channel is 170 um above the tip,
+        %Left column top channel is 50 um above the tip,
         %and extends downwards in 20 um spacing
         yL = fliplr(50:20:(50+20*6));
         

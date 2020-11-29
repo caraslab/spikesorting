@@ -1,4 +1,4 @@
-function [signal,rejectthresh] = caraslab_artifact_reject(signal)
+function [signal] = caraslab_artifact_reject(signal)
 warning('off','all')
 %[finalsignal,rejectthresh] = caraslab_artifact_reject(rawsignal,fs)
 %
@@ -38,7 +38,7 @@ numchans = size(signal,2);
 
 %Define the number of samples before and after each artifact peak to be
 %zeroed. This value was empirically determined.
-win = 200; 
+win = 244; 
 
 %Create initial highpass filter parameters
 % hp = 100;  %(Hz)
@@ -55,62 +55,90 @@ win = 200;
 %---------------------------------------------------------------------
 %First cleaning pass
 % fprintf('First pass artifact rejection...\n')
-[signal,~] = rm_artifacts(signal,numchans,win);
+signal = rm_artifacts(signal,numchans,win);
 
 %---------------------------------------------------------------------
 %Second cleaning pass
-% fprintf('First pass artifact rejection...\n')
-[signal,rejectthresh] = rm_artifacts(signal,numchans,win);
-
-
+%  fprintf('First pass artifact rejection...\n')
+signal = rm_artifacts(signal,numchans,win);
 
 % TODO: turn this into a parfor function?
 % TODO2: after median and std are taken, it can be chunked and GPU-based...
-function [sig,rejectthresh] = rm_artifacts(sig,numchans,win)
-
-
-    %Find all the peaks (spikes and artifacts) greater than 10 std above noise
+function [sig] = rm_artifacts(sig,numchans,win)
+    %Find all the peaks (spikes and artifacts) greater than 50 std above noise (might need to be tweaked)
     % stdbkg = median((abs(sig)/0.6745));
-    sig_median = median((abs(sig)), 1);
-    sig_std = std((abs(sig)), [], 1);
-    thresh = sig_median + 10*sig_std;
+    abs_sig_median = median(abs(sig), 1);
+    abs_sig_std = std(abs(sig), [], 1);
+    thresh = abs_sig_median + 50*abs_sig_std;
+    
+    % To replace the artifacts with median signal noise
+    sig_median = median(sig, 1);
+    sig_std = std(sig, [], 1);
 
     for ch = 1:numchans
         cleansig_ch = sig(:,ch);
-    %     fprintf('Cleaning channel %d\n',ch)
-        [pks,locs] = findpeaks(abs(cleansig_ch),'MinPeakHeight',thresh(ch));
-
-        %Determine threshold for artifact rejection
-    %     rejectthresh = 2*median(pks/0.6745);
-        rejectthresh = 2*median(pks);
-        %Find violations
-        idx = find(pks>rejectthresh);
-
-        %Define a window of samples around each violation and set signal to 0
-        for i = 1:numel(idx)
-            samp = locs(idx(i));
+%         cleansig_ch(abs(cleansig_ch) > thresh(ch)) = sig_std(ch).*randn() + sig_median(ch);
+        peak_indeces = find(abs(cleansig_ch) > thresh(ch) == 1);
+        for i = 1:numel(peak_indeces)
+            samp = peak_indeces(i);
             try
-%                 cleansig_ch(samp-win:samp+win) = 0;
-                cleansig_ch(samp-win+1:samp+win) = sig_std(ch)*randn(length(cleansig_ch(samp-win+1:samp+win)), 1) + sig_median(ch);
+%                 cleansig_ch(samp-win+1:samp+win) = zeros(length(cleansig_ch(samp-win+1:samp+win)), 1);
+                cleansig_ch(samp-win+1:samp+win) = sig_std(ch).*randn(length(cleansig_ch(samp-win+1:samp+win)), 1) + sig_median(ch);
             catch ME
                 if strcmp(ME.identifier, 'parallel:gpu:array:InvalidValue')
                     if samp-win < 0
-%                         cleansig_ch(1:samp+win) = 0;
+%                         cleansig_ch(1:samp+win) = zeros(length(cleansig_ch(1:samp+win)), 1);
                         cleansig_ch(1:samp+win) = sig_std(ch).*randn(length(cleansig_ch(1:samp+win)),1) + sig_median(ch);
+
                     elseif samp+win > length(cleansig_ch)
-%                         cleansig_ch(samp-win:end) = 0;
+%                         cleansig_ch(samp-win+1:end) = zeros(length(cleansig_ch(samp-win+1:end)), 1);
                         cleansig_ch(samp-win+1:end) = sig_std(ch).*randn(length(cleansig_ch(samp-win+1:end)),1) + sig_median(ch);
                     end
                 end
             end
         end
+        end
         sig(:,ch) = cleansig_ch;
 
-    end
-
-    if nargout>1
-        varargout{1} = rejectthresh;
-    end
+        
+        
+        
+        
+%         cleansig_ch = sig(:,ch);
+%     %     fprintf('Cleaning channel %d\n',ch)
+%         [pks,locs] = findpeaks(abs(cleansig_ch),'MinPeakHeight',thresh(ch));
+% 
+%         %Determine threshold for artifact rejection
+%     %     rejectthresh = 2*median(pks/0.6745);
+% %         rejectthresh = 2*median(pks);
+%         %Find violations
+% %         idx = find(pks>rejectthresh);
+% 
+%         %Define a window of samples around each violation and set signal to 0
+% %         for i = 1:numel(idx)
+%         for i = 1:numel(locs)
+% 
+% %             samp = locs(idx(i));
+%             samp = locs(i);
+%             try
+% %                 cleansig_ch(samp-win:samp+win) = 0;
+%                 cleansig_ch(samp-win+1:samp+win) = sig_std(ch).*randn(length(cleansig_ch(samp-win+1:samp+win)), 1) + sig_median(ch);
+%             catch ME
+%                 if strcmp(ME.identifier, 'parallel:gpu:array:InvalidValue')
+%                     if samp-win < 0
+% %                         cleansig_ch(1:samp+win) = 0;
+%                         cleansig_ch(1:samp+win) = sig_std(ch).*randn(length(cleansig_ch(1:samp+win)),1) + sig_median(ch);
+%                     elseif samp+win > length(cleansig_ch)
+% %                         cleansig_ch(samp-win:end) = 0;
+%                         cleansig_ch(samp-win+1:end) = sig_std(ch).*randn(length(cleansig_ch(samp-win+1:end)),1) + sig_median(ch);
+%                     end
+%                 end
+%             end
+%         end
+%         sig(:,ch) = cleansig_ch;
+%     if nargout>1
+%         varargout{1} = rejectthresh;
+%     end
 end
 
 warning('on','all')

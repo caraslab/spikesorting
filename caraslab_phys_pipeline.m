@@ -12,39 +12,54 @@
 % Patched by M Macedo-Lima 8/9/20
 
 %% Set your paths
+
 % Tankdir: Where your TDT tank raw files are; This path should be a
 %   subject's folder with subfolder representing different recording sessions
+
 % Savedir: Where you wish to save the processed files
+
 % Behaviordir: Where the ePsych behavior files are; -mat files will be
 %   combined into a single file. Before running this, group similar sessions
 %   into folders named: 
 %   shock_training, psych_testing, pre_passive, post_passive
+
 % chanMapSavedir: where your channel maps are
+
 % Probetype: what kind of channel map you are using
 %   Only the following have been set up:
 %               'NNBuz5x1264':  Neuronexus Buzsaki 5x12 H64LP
 %               'NN4x16Poly64': Neuronexus A4x16 Poly2 H64LP
 %               'NNA4x16Lin64': Neuronexus A4x16 Poly2 Linear H64LP
 %               'NNA2x32':     Neuronexus A2x32-5mm-25-200-177
+
 % sel: whether you want to run all or a subset of the folders. If 1, you
 %   will be prompted to select folders. Multiple folders can be selected
 %   using Ctrl or Shift
+
 % rootH: path for temp Kilosort file. Should be a fast SSD
 
-% Tankdir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/TDT tank/SUBJ-ID-28-200615-141009';
-
-% Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-13-200125-124647';  % NNBuz5x1264
+Tankdir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/TDT tank/SUBJ-ID-13-200125-124647';
+% 
+Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-13-200125-124647';  % NNBuz5x1264
+Probetype = 'NNBuz5x1264'; 
+badchannels = [64];
+% 
 % Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-14-200126-125925';  %NNBuz5x1264
+% Probetype = 'NNBuz5x1264'; 
+% badchannels = [64];
+% % 
 % Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-26-200614-103221'; % NNA4x16Lin64; badchannels: 36,44,47,52,58,59,64
+% Probetype = 'NNA4x16Lin64'; 
+% badchannels = [36,44,47,52,55,58,59,64];
+% 
+% 
 % Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-27-200614-104657';  % NNA2x32; badchannels: 58:63
-Savedir =  '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-28-200615-141009'; %NNA4x16Lin64; badchannels: 8,10
-
-Probetype = 'NNA4x16Lin64'; 
 % Probetype = 'NNA2x32'; 
-
-% badchannels = [36,44,47,52,58,59,64];
-% badchannels = [58:63];
-badchannels = [8,10];
+% badchannels = [55,58:64];
+% % % 
+% Savedir =  '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-28-200615-141009'; %NNA4x16Lin64; badchannels: 8,10
+% Probetype = 'NNA4x16Lin64';
+% badchannels = [8,10,55,64];
 
 
 chanMapSavedir = '/home/caras/Documents/Matt/Spike sorting code/channelmaps';
@@ -52,7 +67,6 @@ chanMap = [chanMapSavedir '/' Probetype '.mat'];
 
 % path to temporary binary file for Kilosort (same size as data, should be on fast SSD)
 rootH = '/home/matheus/Documents'; 
-
 
 sel = 1;  % Select subfolders; 0 will run all subfolders
 
@@ -100,7 +114,9 @@ caraslab_createconfig(Savedir,chanMap,sel, badchannels, 1)
 
 %% 4. CREATE *DAT BINARY FILE
 % This function detects bad channels by RMS thresholds and saves them in ops.igood
-% then it rescales and converts -mat files to 16 bit integer -dat files
+%   Bad channels detected this way are currently not used for anything, but it
+%   could be helpful to signal unknown bad channels
+% Then, this function rescales and converts -mat files to 16 bit integer -dat files
 % TODO: change this to be chunkwise so it doesn't hog RAM
 caraslab_mat2dat(Savedir,sel)
 
@@ -109,28 +125,29 @@ caraslab_mat2dat(Savedir,sel)
 % This function takes .dat files and employs in this order:
 % 1. Comb filter (if ops.comb==1)
 % 2. Median-CAR filter (if ops.CAR==1)
-% 3. Kilosort GPU-based chunkwise filter
+% 3. Kilosort-inspired GPU-based chunkwise filter
 % 4. Saves a filename_CLEAN.dat file
 caraslab_preprocessdat(Savedir, sel)
-
 
 %% 6. CONCATENATE SAME DAY RECORDINGS
 caraslab_concatenate_sameDay_recordings(Savedir,sel)
 
 %% 7. CONCATENATE SAME DEPTH RECORDINGS ACROSS DAYS
-NchanTOT = 64;
-NT = 32832;  % A reasonable batch size. Reduce if out of memory
-caraslab_concatenate_sameDepth_recordings(Savedir, sel, NchanTOT, NT)
+% % not currently in use
+% NchanTOT = 64;
+% NT = 32832;  % A reasonable batch size. Reduce if out of memory
+% caraslab_concatenate_sameDepth_recordings(Savedir, sel, NchanTOT, NT)
 
-% Create config in new folders
+%% 8. Create config in new folders
+% Necessary to run kilosort on concatenated folders
 caraslab_createconfig(Savedir,chanMap,sel, badchannels, 1)
 
-%% 8. RUN KILOSORT
+%% 9. RUN KILOSORT
 %   This function runs kilosort on the selected data.
 % rootH is the path to the kilosort temp file; Better if a fast SSD
 caraslab_kilosort(Savedir, sel, rootH)
 
-%% 9. GO HAVE FUN IN PHY!
+%% 10. GO HAVE FUN IN PHY!
 %         _             _   _                _ 
 %        | |           | | (_)              | |
 %   _ __ | |__  _   _  | |_ _ _ __ ___   ___| |
@@ -141,7 +158,7 @@ caraslab_kilosort(Savedir, sel, rootH)
 %  |_|          |___/                          
 
 
-%% 10. EXTRACT SPIKE TIMES AND WAVEFORM MEASUREMENTS 
+%% 11. EXTRACT SPIKE TIMES AND WAVEFORM MEASUREMENTS 
 % This function retrieves timestamps and waveforms from phy files
 % Outputs are .txt files with timestamps, .csv and .pdf files with waveform
 % measurements and plots
@@ -149,4 +166,14 @@ caraslab_kilosort(Savedir, sel, rootH)
 % also refilter the data with a 300-6000Hz bandpass filter and save a new
 % ~~CLEAN300Hz.dat 
 show_plots = 1;
-get_timestamps_and_wf_measurements(Savedir, sel, show_plots)
+filter_300hz = 1;
+get_timestamps_and_wf_measurements(Savedir, sel, show_plots, filter_300hz)
+
+%% 12. EXTRACT WAVEFORMS PLOTS WITH PROBE GEOMETRY
+% This function reads the probe geometry in channel map and outputs the
+% spike means and SEM organized in space in a pdf. If filter_300hz==0, it will
+% search for the 300hz bandpass filtered file. Otherwise, it will filter
+% again
+show_plots = 1;
+filter_300hz = 0;
+plot_unit_shanks(Savedir, sel, show_plots, filter_300hz)

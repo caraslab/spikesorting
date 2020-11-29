@@ -2,16 +2,15 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
     % This function retrieves timestamps and waveforms from phy files
     % Outputs are .txt files with timestamps, .csv and .pdf files with waveform
     % measurements and plots    
-    % From Cortexlab repository
+    % Adapted from Cortexlab repository
     % Patched by M Macedo-Lima 9/8/20
-    % New in patch:
+    % New in this patch:
     %   - Call mode (selecting directories)
     %   - show_plots (0 or 1) to visualize waveforms
     %   - bp_filter (0 or 1) to refilter before measuring units. Since KS2
     %       uses a 150 high-pass, using this only could give you noisy units.
     %       The new filter is a 300-6000 Hz bandpass. A new file will be
-    %       output, called *CLEAN_300Hz.dat; can be deleted after this if
-    %       needed.
+    %       output, called *CLEAN_300Hz.dat; can be deleted after this
     
     % Select folders to run
     if ~sel
@@ -31,6 +30,7 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
     for i = 1:numel(datafolders)
         clear ops rez
         close all
+        
 
         cur_path.name = datafolders{i};
         cur_savedir = [Savedir filesep cur_path.name];
@@ -38,8 +38,7 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
         %Load in configuration file (contains ops struct)
         % Catch error if -mat file is not found and skip folder
         try
-            load(fullfile(cur_savedir, 'rez.mat'));
-            ops = rez.ops;
+            load(fullfile(cur_savedir, 'config.mat'));
             readNPY(fullfile(cur_savedir, 'spike_times.npy'));
         catch ME
             if strcmp(ME.identifier, 'MATLAB:load:couldNotReadFile')
@@ -54,7 +53,13 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
 
         %Start timer
         t0 = tic;
-
+        
+        % Delete old timestamp files in folder
+        old_timestamps = dir([cur_savedir '/*cluster*txt']);
+        for i=1:numel(old_timestamps)
+            delete(fullfile(old_timestamps(i).folder, old_timestamps(i).name));
+        end
+        
         %% Define I/O and waveform parameters
         gwfparams.dataDir = cur_savedir;    % KiloSort/Phy output folder 
         gwfparams.ops = ops;
@@ -71,20 +76,31 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
         gwfparams.rawDir = cur_savedir;
         gwfparams.sr = ops.fs;
         gwfparams.nCh = ops.NchanTOT; % Number of channels that were streamed to disk in .dat file
-        gwfparams.fileName = dir(ops.fbinary).name; % .dat file containing the raw used for sorting
+        gwfparams.fileName = dir(ops.fclean).name; % .dat file containing the raw used for sorting
         gwfparams.dataType = 'int16'; % Data type of .dat file (this should be BP filtered)
 
         gwfparams.wfWin = [round(-(0.001*gwfparams.sr)) round(0.003*gwfparams.sr)]; % Number of samples before and after spiketime to include in waveform
         gwfparams.nWf = 2000; % Max number of waveforms per unit to pull out for averaging
         gwfparams.spikeTimes = readNPY(fullfile(gwfparams.dataDir, 'spike_times.npy')); % Vector of cluster spike times (in samples) same length as .spikeClusters
         gwfparams.spikeClusters = readNPY(fullfile(gwfparams.dataDir, 'spike_clusters.npy')); % Vector of cluster IDs (Phy nomenclature)   same length as .spikeTimes
+        gwfparams.channelShanks = readNPY(fullfile(gwfparams.dataDir, 'channel_shanks.npy')); % Vector of cluster shanks
 
         gwfparams.chanMap = readNPY(fullfile(gwfparams.dataDir, 'channel_map.npy')); % this is important in esp if you got rid of files. 
-        gwfparams.cluster_quality = tdfread(fullfile(gwfparams.dataDir, 'cluster_info.tsv'));
-        best_channels = gwfparams.cluster_quality.ch;  
+        try
+            gwfparams.cluster_quality = tdfread(fullfile(gwfparams.dataDir, 'cluster_info.tsv'));
+        catch ME
+            if strcmp(ME.identifier, 'MATLAB:load:couldNotReadFile')
+                fprintf('\nFile not found\n')
+                continue
+            else
+                fprintf(ME.identifier)  % file not found has no identifier?? C'mon MatLab...
+                fprintf([ME.message '\n'])
+                continue  % Continue here instead of break because I don't know how to catch 'file not found' exception; maybe using ME.message?
+            end
+        end
 
-        % Get good clusters for measuring only
-        gwfparams.good_clusters = gwfparams.cluster_quality.cluster_id(find(gwfparams.cluster_quality.group(:,1)=='g'));
+        % Get good and mua for measuring
+        gwfparams.good_clusters = gwfparams.cluster_quality.cluster_id(gwfparams.cluster_quality.group(:,1)=='g' | gwfparams.cluster_quality.group(:,1)=='m');
 
         %% Get waveforms from .dat
         wf = getWaveForms(gwfparams, bp_filter);  
@@ -115,7 +131,10 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
         ptp_durations = zeros(length(gwfparams.good_clusters), 1);
         ptp_ratios = zeros(length(gwfparams.good_clusters), 1);
         repolarization_durations = zeros(length(gwfparams.good_clusters), 1);
-
+        best_channels_csv = zeros(length(gwfparams.good_clusters), 1);
+        shanks = zeros(length(gwfparams.good_clusters), 1);
+        cluster_quality = zeros(length(gwfparams.good_clusters), 1);  % zeros will be MU, ones will be SU
+        
         if show_plots
             figure('Name', prename);
         else
@@ -125,9 +144,21 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
             cluster_phy_id = good_cluster_idx(wf_idx);
 
             % Grab channel with highest amplitude for this unit
-            best_channel = best_channels(gwfparams.cluster_quality.cluster_id == cluster_phy_id);
+            best_channel = gwfparams.cluster_quality.ch(gwfparams.cluster_quality.cluster_id == cluster_phy_id);
+            
+            % Store channel and shank info
+            best_channels_csv(wf_idx) = best_channel + 1;
+            shanks(wf_idx) = gwfparams.cluster_quality.sh(gwfparams.cluster_quality.cluster_id == cluster_phy_id);  
+            
+            % Grab best channel index
             best_channel_idx = find(gwfparams.chanMap == best_channel);
-
+            
+            % Store cluster quality
+            cluster_quality_char = gwfparams.cluster_quality.group(gwfparams.cluster_quality.cluster_id == cluster_phy_id);
+            if (cluster_quality_char == 'g')
+            	cluster_quality(wf_idx) = 1;
+            end
+            
             % Squeeze out and store raw waveforms and averages
             cur_wfs = wf.waveForms(wf_idx, :, best_channel_idx,:);
             cur_wfs = squeeze(cur_wfs);
@@ -187,12 +218,12 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
             % to cluster cortical neurons in monkey
             % Defined as the time between the trough and the inflection point
             % (when second derivative crosses 0)
-            % Derivative is too jittery around 0. Smoothing it by ~1 ms (0.001 * samplingRateIncrease * ops.fs)
+            % Derivative is too jittery around 0. Smoothing it by ~1 ms (i.e. 0.001 * samplingRateIncrease * ops.fs)
             % seems to correct for this. Might need to be adjusted for
             % different sampling rates
             second_dv_dt = smooth(gradient(gradient(cur_wf_mean_upsample)), round(0.001 * samplingRateIncrease * ops.fs), 'loess');
 
-            % Below debug code is for checking the derivative plots; use
+            % Below debug code is for checking the derivative plots; make sure to use
             % breakpoints
     %         figure
     %         hold on
@@ -212,6 +243,7 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
                 dummy_next_points = all_crosses(trough_idx - all_crosses < 0);
                 inflection_point = dummy_next_points(1);
                 repolarization_duration = (inflection_point - trough_idx) / gwfparams.sr * 1000 / samplingRateIncrease;
+                repolarization_durations(wf_idx) = repolarization_duration;
             catch ME
                 fprintf('Repolarization calculation failed.')
             end
@@ -219,7 +251,6 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
             % Store measurements
             ptp_durations(wf_idx) = ptp_duration;
             ptp_ratios(wf_idx) = ptp_ratio;
-            repolarization_durations(wf_idx) = repolarization_duration;
 
             %% PLOT
             subplot(ceil(length(good_cluster_idx) / 4), 4, wf_idx);
@@ -234,10 +265,12 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
             norm_peak_value = abs(cur_wf_mean(cur_wf_mean_peak_idx));
             % Normalize amplitude so that peak is at -1
             cur_wf_mean = cur_wf_mean ./ norm_peak_value;
-
+            
+            title(['Cluster' num2str(cluster_phy_id)]);
+            
             hold on
 
-            for spike_idx=1:min(size(cur_wfs, 1), 100)  % plot a max of 100 spikes
+            for spike_idx=1:min(size(cur_wfs, 1), 500)  % plot a max of 500 spikes
                 cur_wf = cur_wfs(spike_idx,:) - mean(cur_wfs(spike_idx,1:5));
                 if isnan(mean(cur_wfs(spike_idx, 1:5)))
                     continue  % sometimes waveforms are NaN which is weird...
@@ -246,7 +279,7 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
                 cur_wf = cur_wf ./ norm_peak_value;
 
                 cax = plot(x_time, cur_wf, 'black'); % Plot 0-centered traces
-                cax.Color(4)=0.3;
+                cax.Color(4)=0.1;
             end
 
 
@@ -290,7 +323,18 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
         print([gwfparams.dataDir '\CSV files\' prename '_waveform_measurements'], '-dpdf', '-bestfit', '-painters');
 
         %% write wf measurements
-        TT = array2table([gwfparams.good_clusters ptp_durations ptp_ratios repolarization_durations],'VariableNames',{'Cluster' 'PTP_duration_ms' 'PTP_ratio' 'Repolarization_duration_ms'});
+        TT = array2table([gwfparams.good_clusters best_channels_csv shanks cluster_quality ptp_durations ptp_ratios repolarization_durations],...
+            'VariableNames',{'Cluster' 'Best_channel' 'Shank' 'Cluster_quality' 'PTP_duration_ms' 'PTP_ratio' 'Repolarization_duration_ms'});
+        % Change code into words
+        TT.Cluster_quality = num2cell(TT.Cluster_quality);
+        
+        for i=1:length(TT.Cluster_quality)
+            if TT.Cluster_quality{i} == 1
+                TT.Cluster_quality(i) = {'good'};
+            else
+                TT.Cluster_quality(i) = {'mua'};
+            end
+        end
         writetable(TT, fullfile(gwfparams.dataDir, 'CSV files', [prename '_waveform_measurements.csv']));
     end
 end

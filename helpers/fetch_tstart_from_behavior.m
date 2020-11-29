@@ -26,8 +26,7 @@ try
         tstart = tstart - 5;
     end
 catch ME
-    % If there is no behavior file just output 0. Probably not worth
-    % analyzing these data anyways...
+    % If there is no behavior file just output 0.
     if strcmp(ME.identifier, 'MATLAB:narginchk:notEnoughInputs')
         fprintf('No behavior file found for: %s\n Set trange manually before sorting\n', csv_dir)
         tstart = 0;

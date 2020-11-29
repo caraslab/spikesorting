@@ -122,14 +122,18 @@ for i = 1:numel(BLOCKNAMES)
         mkdir([Savedir filesep cur_path.name]);
         if ~isempty(epData.streams)
             rawsig = epData.streams.RSn1.data; % rows = chs, cols = samples; Kilosort  likes it like this
-            save(datafilename,'rawsig','-v7.3')
+            save(datafilename, 'rawsig','-v7.3')
         else
             fprintf('\nNo raw stream found in folder. Skipping...')
             continue
         end
         
         %Remove the data from the epData structure
+        % Keep in mind big recordings might crash Matlab; this helps but
+        % it is still possible
         epData.streams.RSn1.data = [];
+        clear rawsig
+        
         fprintf('\nSaving supporting information...\n')
         save(infofilename,'epData','-v7.3')
             
