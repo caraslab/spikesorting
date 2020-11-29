@@ -1,5 +1,20 @@
 function caraslab_concatenate_sameDepth_recordings(Savedir, sel, NchanTOT, NT)
+% This function concatenates recordings in provided folders into a single
+% .dat file. It orders them by date, then concatenates.
+% It also works when concatenating previsouly concatenated recordings. In
+% this case, it will search for a breakpoints.csv file and append
+% breakpoints to that
+%
+%   sel:        if 0 or omitted, program will cycle through all files
+%               in the data directory. 
+%                   
+%               if 1, user will be prompted to select a file
+%
+% The outputs are a concatenated .dat file and a .csv file listing the
+% breakpoints (in samples) at which the original recordings ended. This file is
+% important to realign spout and stimulus timestamps which start at 0
 
+% Written by M Macedo-Lima October, 2020
 if ~sel
     datafolders = caraslab_lsdir(Savedir);
     datafolders = {datafolders.name};

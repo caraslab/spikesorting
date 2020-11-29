@@ -36,10 +36,15 @@ if refilter
     ops.comb = 0;
     ops.CAR = 0;
     
+    ops.fbinary = ops.fclean;
+    
     if ~isfield(ops, 'igood')
-        ops.igood=true(1:ops.NchanTOT);
+        ops.igood=true(size(1:ops.NchanTOT));
     end
     
+    if isfield(ops, 'badchannels')
+        ops.igood(ops.badchannels) = 0;
+    end
     % Create new filtered file
     temp_dir = dir(ops.fclean);
     ops.fclean = fullfile(temp_dir.folder, [temp_dir.name(1:end-4) '300hz.dat']);
@@ -49,8 +54,15 @@ if refilter
     fileName = ops.fclean;
 
 else
-    % Load .dat and KiloSort/Phy output
-    fileName = fullfile(gwfparams.rawDir,gwfparams.fileName);  
+    ops = gwfparams.ops;
+    temp_dir = dir(ops.fclean);
+    if isfile(fullfile(temp_dir.folder, [temp_dir.name(1:end-4) '300hz.dat']))  % if no filtering is selected, check if filtered file already exists and use it
+        ops.fclean = fullfile(temp_dir.folder, [temp_dir.name(1:end-4) '300hz.dat']);
+        fileName = ops.fclean;
+    else
+        % Load .dat and KiloSort/Phy output
+        fileName = fullfile(gwfparams.rawDir,gwfparams.fileName);  
+    end
 end
 
 filenamestruct = dir(fileName);

@@ -52,14 +52,14 @@ function caraslab_batch_gpufilter(cur_savedir, optional_ops)
     end
     
     if isfield(ops, 'badchannels')
-        igood(badchannels) = false;
+        igood(ops.badchannels) = false;
     end
     
     NT       = ops.NT ; % number of timepoints per batch
 
     bytes       = get_file_size(ops.fbinary); % size in bytes of raw binary
     nTimepoints = floor(bytes/NchanTOT/2); % number of total timepoints
-    ops.tstart  = ceil(ops.trange(1) * ops.fs); % starting timepoint for processing data segment
+    ops.tstart  = 0; % starting timepoint for processing data segment
     ops.tend    = min(nTimepoints, ceil(ops.trange(2) * ops.fs)); % ending timepoint
     ops.sampsToRead = ops.tend-ops.tstart; % total number of samples to read
     ops.twind = ops.tstart * NchanTOT*2; % skip this many bytes at the start

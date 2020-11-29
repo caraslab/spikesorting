@@ -1,11 +1,10 @@
 function caraslab_mat2dat(Savedir, sel)
-%caraslab_mat2dat(binarydir)
 %
 % This function converts -mat files to 16 bit integer -dat files, the
-% required input format for kilosort. This function should be run as the
-% final processing step before storing data in kilosort (i.e. data should
-% already have been filtered, had common average referencing applied, and
-% had artifacts removed using caraslab_preprocess.m).
+% required input format for kilosort. 
+% This function also runs a quick RMS-based bad channel detector. The
+% output is not used for anything but it tells the user of unknown
+% potential bad channels
 %
 %   sel:        if 0 or omitted, program will cycle through all files
 %               in the data directory. 
@@ -13,6 +12,7 @@ function caraslab_mat2dat(Savedir, sel)
 %               if 1, user will be prompted to select a file
 %
 %Written by ML Caras Mar 27 2019
+% Patched by M Macedo-Lima October, 2020
 
 if ~sel
     datafolders = caraslab_lsdir(Savedir);
@@ -25,9 +25,6 @@ elseif sel
     for i=1:length(datafolders_names)
         [~, datafolders{end+1}, ~] = fileparts(datafolders_names{i});
     end
-%     [~,name] = fileparts(pname);
-%     datafolders = {name};  
-%     
 end
 
 
@@ -55,7 +52,6 @@ for i = 1:numel(datafolders)
     end
     
     %Find the -mat file to convert
-%     matfile = ops.readyforsorting;
     mat_file = ops.rawdata;
     
     %Load -mat data file
@@ -91,7 +87,9 @@ for i = 1:numel(datafolders)
         return
     end
     
-    fwrite(fid, temp.rawsig(:)*30000, 'int16'); % Multiply by value just short of max int16 value
+    % The TDT outputs a very small amplitude. After visual inspection,
+    % multiplying it by this 30k gain factor works very well.
+    fwrite(fid, temp.rawsig(:)*30000, 'int16'); 
     fclose(fid);
     tEnd = toc(t0);
     fprintf('Finished in: %d minutes and %f seconds\n', floor(tEnd/60),rem(tEnd,60));

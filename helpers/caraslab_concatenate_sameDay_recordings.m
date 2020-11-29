@@ -1,4 +1,23 @@
 function caraslab_concatenate_sameDay_recordings(Savedir, sel)
+%
+% This function searches the recording folders and concatenates *CLEAN.dat files
+% within folders that have the same date. A new file and directory will be
+% created with Date_concat name (e.g. 201125_concat).
+
+% For this to work, the foldernames have to have the date and session in
+% them, which is the TDT naming convention. This function will order the
+% recordings first by time recorded (in the foldername)
+%
+%   sel:        if 0 or omitted, program will cycle through all files
+%               in the data directory. 
+%                   
+%               if 1, user will be prompted to select a file
+%
+% The outputs are a concatenated .dat file and a .csv file listing the
+% breakpoints (in samples) at which the original recordings ended. This file is
+% important to realign spout and stimulus timestamps which start at 0
+
+% Written by M Macedo-Lima October, 2020
 
 if ~sel
     datafolders = caraslab_lsdir(Savedir);
@@ -13,15 +32,24 @@ elseif sel
     end
 end
 
-% TODO: Only grab folders with .dat files in them
-
 % Sort according to dates and times in folder names
 date_time = regexp(datafolders, '\d+', 'match');
 recording_dates = [];
 recording_times = [];
-for i=1:length(date_time)
-   recording_dates = [recording_dates str2num(date_time{i}{1})];
-   recording_times = [recording_times str2num(date_time{i}{2})];
+try
+    for i=1:length(date_time)
+       recording_dates = [recording_dates str2num(date_time{i}{1})];
+       recording_times = [recording_times str2num(date_time{i}{2})];
+    end
+catch ME
+    if strcmp(ME.identifier, 'MATLAB:badsubscript')
+        fprintf('\nfile not found\n')
+        return
+    else
+        fprintf(ME.identifier)
+        fprintf(ME.message)
+        return
+    end
 end
 
 % now sort hierarchically first date, then time
@@ -95,6 +123,11 @@ for day_idx=1:length(unique_days)
 
         while ~feof(fid)  % read until end of file
             buff = fread(fid, [NchanTOT NT], '*int16'); % read and reshape. Assumes int16 data (which should perhaps change to an option)
+%             if isempty(buff)
+%                 break; % this shouldn't really happen, unless we counted data batches wrong
+%             end
+%             dat = single(buff)./postprocessing_max_per_channel; %normalizes recording such that dat ranges from - 1 to 1
+%             dat = int16(dat.*(single(intmax('int16')))); %rescales to use maximum range of int16 scale
             fwrite(fidC, buff(:), 'int16'); % write this batch to concatenated file
         end
         fclose(fid); % close the files
@@ -109,4 +142,3 @@ for day_idx=1:length(unique_days)
     tEnd = toc(t0);
     fprintf('\nDone in: %d minutes and %f seconds\n', floor(tEnd/60), rem(tEnd,60));
 end
-

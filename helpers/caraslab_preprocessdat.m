@@ -1,4 +1,20 @@
 function caraslab_preprocessdat(Savedir, sel)
+% This function takes .dat files and employs in this order:
+% 1. Comb filter (if ops.comb==1)
+% 2. Median-CAR filter (if ops.CAR==1)
+% 3. Kilosort-inspired GPU-based chunkwise filter
+% 4. Saves a filename_CLEAN.dat file
+%
+%Input variables:
+%
+%       Savedir: path to folder containing data directories. Each directory
+%                should contain a binary (-dat) data file and
+%                a kilosort configuration (config.mat) file. 
+%
+%       sel:    if 0 or omitted, program will cycle through all folders
+%               in the data directory.    
+%
+%               if 1, program will prompt user to select folder
 
 %Written by M Macedo-Lima 10/05/20
 if ~sel
@@ -96,19 +112,15 @@ for i = 1:numel(datafolders)
     fidC        = fopen(ops.fclean,  'w'); % MML edit; write processed data for phy
     fid         = fopen(ops.fbinary, 'r'); % open for reading raw data
     
-%     % Convert noisy parts in the beginning of file to gaussian noise
-%     if ops.tstart > 0
-%         fseek(fid, 0, 'bof'); % fseek to batch start in raw file
-%         noiseBuff = fread(fid, [NchanTOT ops.tstart-1], 'int16'); % read and reshape. Assumes int16 data (which should perhaps change to an option)
-%         noiseBuff =  std(noiseBuff, [], 2).*randn(size(noiseBuff)) + median(noiseBuff, 2);
-%         fwrite(fidC, noiseBuff, 'int16'); % write this batch to clean file
-%     end
-
-
 
     for ibatch = 1:Nbatch
         % we'll create a binary file of batches of NT samples, which overlap consecutively on ops.ntbuff samples
         % in addition to that, we'll read another ops.ntbuff samples from before and after, to have as buffers for filtering
+        % MML edit: this part is weird in the original kilosort2 code so I
+        % rewrote it in a way it makes sense to me. I described the issue
+        % in the link below, and Marius (Kilosort developer) didn't 
+        % necessary think it was a bug, but my confusion remains. 
+        % https://github.com/MouseLand/Kilosort/issues/223
         offset = max(0, ops.twind + 2*NchanTOT*(NT*(ibatch-1) - 2*ops.ntbuff)); % number of samples to start reading at.
         if offset==0
             ioffset = 0; % The very first batch has no pre-buffer, and has to be treated separately
@@ -163,7 +175,7 @@ for i = 1:numel(datafolders)
 %             fprintf('Removing artifacts.......\n')
 %             t0 = tic;
             warning off;
-            [datr, ~] = caraslab_artifact_reject(datr);
+            datr = caraslab_artifact_reject(datr);
             warning on;
 %             tEnd = toc(t0);
 %             fprintf('Finished in: %d minutes and %f seconds\n', floor(tEnd/60),rem(tEnd,60));
@@ -171,8 +183,11 @@ for i = 1:numel(datafolders)
         
         datr = datr';
         
-        % Convert noisy parts in the beginning of file to 0 using the
+        % Convert noisy parts in the beginning of file (before ops.tstart)
+        % to gaussian noise using the
         % median and std of the first batch
+        % This prevents kilosort from getting biased by the higher noise
+        % band in those often long parts
         if ibatch == 1
             if ops.tstart > 0
                 % Gather on CPU side right away because GPU might run out
@@ -186,9 +201,7 @@ for i = 1:numel(datafolders)
                 fwrite(fidC, noiseBuff, 'int16'); % write this batch to clean file
             end
         end
-        
 
-     
         datr  = gather(int16(datr)); % convert to int16, and gather on the CPU side
         
         fwrite(fidC, datr, 'int16'); % write this batch to clean file

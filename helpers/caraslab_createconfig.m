@@ -1,26 +1,34 @@
 function caraslab_createconfig(Savedir,chanMap,sel, badchannels, fetch_tstart_from_behav)
-%caraslab_createconfig(useGPU,datadir,binarydir,chanMap,sel)
 %
 % This function sets configuration parameters for kilosort.
 % 
 % Input variables:
-%   useGPU:     if 1, will run the code on a Nvidia GPU (much faster, but
-%               requires mexGPUall first).
+%   Savedir:
+%       path to directory where -mat and -csv files will be saved
 %
-%               if 0, will run the code on built in CPU (slower)
+%   chanMap:
+%       path to appropriate probe type's channel map
 %
-%   infodir:    path where info (-info) files are stored
+%   badchannels:
+%       known bad/disconnected channels. These will still be sorted but will not
+%       be used for CAR filter. For some mysterious reason to me, Kilosort
+%       performs better when bad channels are included in the sorting
 %
-%   binarydir:  path where binary data files (-dat) will be saved
-%               eventually
+%   fetch_tstart_from_behav:
+%       if 1, program will attempt to find a behavioral file within
+%           Savedir/CSV files to grab the first relevant timestamp. This
+%           helps eliminate noise from when the animal is plugged in
+%           outside of the booth.
+%           If Aversive is in the name of the folder, the first spout onset is
+%           selected; if Aversive is not in the name of the folder, the first
+%           stimulus onset is selected.
+%       if 0, the entire recording ([0 Inf]) will be signalded to kilosort
 %
-%   chanMap:    name of channel map for probe (include full path and
-%               extension)
-%
-%   sel:        if 0 or omitted, program will cycle through all files
-%               in the data directory. 
+%   sel:        
+%       if 0 or omitted, program will cycle through all files
+%           in the data directory. 
 %                   
-%               if 1, user will be prompted to select a file
+%       if 1, user will be prompted to select a file
 %
 %Written by ML Caras Mar 26 2019
 % Patched by M Macedo-Lima 9/8/20
@@ -102,7 +110,6 @@ for i = 1:numel(datafolders)
     ops.rm_artifacts = 1;
     
     ops.Nchan = ops.NchanTOT - numel(badchannels);              %number of active channels
-%     ops.Nfilt = 32*floor((ops.Nchan*2)/32);                     % number of clusters to use (2-4 times more than Nchan, should be a multiple of 32)
 
     ops.fbinary = fullfile(cur_savedir, [cur_path.name '.dat']);
     ops.fclean = fullfile(cur_savedir, [cur_path.name '_CLEAN.dat']);
@@ -126,18 +133,17 @@ for i = 1:numel(datafolders)
     % splitting a cluster at the end requires at least this much isolation for each sub-cluster (max = 1)
     ops.AUCsplit = 0.9; 
 
-    % minimum spike rate (Hz), if a cluster falls below this for too long it gets removed
-%     ops.minFR = 1/50; 
+    % minimum spike rate (Hz), if a cluster falls below this for too long it gets removed (1/50)
     ops.minFR = 0; 
+    
     % number of samples to average over (annealed from first to second value) 
     ops.momentum = [20 400];
 
     % spatial constant in um for computing residual variance of spike
     ops.sigmaMask = 30;
 
-    % threshold crossings for pre-clustering (in PCA projection space)
-%     ops.ThPre = 8;
-    ops.ThPre = 4;  % This helps recordings not crash for finding too few spikes
+    % threshold crossings for pre-clustering (in PCA projection space) (8)
+    ops.ThPre = 4;  % This at 4 helps recordings not crash for finding too few spikes
         
     %% danger, changing these settings can lead to fatal errors
     % options for determining PCs
@@ -147,7 +153,7 @@ for i = 1:numel(datafolders)
 
     ops.GPU                 = 1; % has to be 1, no CPU version yet, sorry
     % ops.Nfilt               = 1024; % max number of clusters
-    ops.nfilt_factor        = 4; % max number of clusters per good channel (even temporary ones)
+    ops.nfilt_factor        = 8; % max number of clusters per good channel (even temporary ones) (4)
     ops.ntbuff              = 64;    % samples of symmetrical buffer for whitening and spike detection
     
     % MML comment: I'm guessing that the first term 64*1024 has to be a 

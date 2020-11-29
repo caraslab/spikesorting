@@ -28,8 +28,6 @@ ops.Nbatch = Nbatch;
 [chanMap, xc, yc, kcoords, NchanTOTdefault] = loadChanMap(ops.chanMap); % function to load channel map file
 ops.NchanTOT = getOr(ops, 'NchanTOT', NchanTOTdefault); % if NchanTOT was left empty, then overwrite with the default
 
-
-    
 if getOr(ops, 'minfr_goodchannels', .1)>0 % discard channels that have very few spikes
     % determine bad channels
     fprintf('Time %3.0fs. Determining good channels.. \n', toc);
@@ -39,16 +37,16 @@ if getOr(ops, 'minfr_goodchannels', .1)>0 % discard channels that have very few 
     if isfield(ops, 'igood')
         igood = logical(gather(igood .* ops.igood));
     end
-% MML edit
+% % MML edit: in case igood already exists, grab that
 elseif isfield(ops, 'igood')
-    igood = ops.igood;
+    igood = logical(ops.igood);
 else
-    ops.igood = true(size(chanMap));
+    igood = true(size(chanMap));
 end
 
 % MML edit: further remove defective channels
 if isfield(ops, 'badchannels')
-    igood(ops.badchannels) = false;
+    igood(ops.badchannels) = 0;
 end
 
 chanMap = chanMap(igood); %it's enough to remove bad channels from the channel map, which treats them as if they are dead
