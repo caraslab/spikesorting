@@ -1,4 +1,4 @@
-function caraslab_concatenate_sameDay_recordings(Savedir, sel)
+function caraslab_concatenate_sameDay_recordings(Savedir, sel, chanMap, badchannels)
 %
 % This function searches the recording folders and concatenates *CLEAN.dat files
 % within folders that have the same date. A new file and directory will be
@@ -82,9 +82,11 @@ for day_idx=1:length(unique_days)
     mkdir(full_output_dir);
 
 %     fidC        = fopen(fullfile(full_output_dir, [output_file_name '.dat']),  'w'); % Write concatenated recording
-    fidC        = fopen(fullfile(full_output_dir, [output_file_name '_CLEAN.dat']),  'w'); % Write concatenated recording
+%     fidC        = fopen(fullfile(full_output_dir, [output_file_name '_CLEAN.dat']),  'w'); % Write concatenated recording
     session_names = {};
     break_points = [];
+    tranges = [];
+    cumulative_tranges =[];
     t0 = tic;
     for i = 1:numel(cur_day_datafolders)
         cur_path.name = cur_day_datafolders{i};
@@ -111,34 +113,50 @@ for day_idx=1:length(unique_days)
         %Start timer
 
         fprintf('\nReading raw file: %s\n', ops.fclean)
-        fid         = fopen(ops.fclean, 'r'); % open current raw data
+%         fid         = fopen(ops.fclean, 'r'); % open current raw data
 
         session_names{end+1} = dir(ops.fclean).name;
 
         if i > 1
-            break_points = [break_points; get_file_size(ops.fclean)/NchanTOT/2 + break_points(i-1)];
+            previous_breakpoint = break_points(i-1);
         else
-            break_points = [break_points; get_file_size(ops.fclean)/NchanTOT/2];
+            previous_breakpoint = 0;
         end
+        
+        cur_break_point = get_file_size(ops.fclean)/NchanTOT/2 + previous_breakpoint;
+        break_points = [break_points; cur_break_point];
 
-        while ~feof(fid)  % read until end of file
-            buff = fread(fid, [NchanTOT NT], '*int16'); % read and reshape. Assumes int16 data (which should perhaps change to an option)
-%             if isempty(buff)
-%                 break; % this shouldn't really happen, unless we counted data batches wrong
-%             end
-%             dat = single(buff)./postprocessing_max_per_channel; %normalizes recording such that dat ranges from - 1 to 1
-%             dat = int16(dat.*(single(intmax('int16')))); %rescales to use maximum range of int16 scale
-            fwrite(fidC, buff(:), 'int16'); % write this batch to concatenated file
-        end
-        fclose(fid); % close the files
+        % TODO: create a new config.mat file here and remember to create a
+        % variable with all the ops.tranges
+        tranges = [tranges; ops.trange];
+        cumulative_tranges = [cumulative_tranges; ops.trange + (previous_breakpoint / ops.fs)];
+%         
+%         while ~feof(fid)  % read until end of file
+%             buff = fread(fid, [NchanTOT NT], '*int16'); % read and reshape. Assumes int16 data (which should perhaps change to an option)
+% %             if isempty(buff)
+% %                 break; % this shouldn't really happen, unless we counted data batches wrong
+% %             end
+% %             dat = single(buff)./postprocessing_max_per_channel; %normalizes recording such that dat ranges from - 1 to 1
+% %             dat = int16(dat.*(single(intmax('int16')))); %rescales to use maximum range of int16 scale
+%             fwrite(fidC, buff(:), 'int16'); % write this batch to concatenated file
+%         end
+%         fclose(fid); % close the files
     end
     % Output csv breakpoints
     ret_table = cell2table(session_names', 'VariableNames', {'Session_file'});
     ret_table.Break_point = break_points;
-    writetable(ret_table, fullfile(full_output_dir, [output_file_name '_breakpoints.csv']));
+%     writetable(ret_table, fullfile(full_output_dir, [output_file_name '_breakpoints.csv']));
 
-    fclose(fidC);
-
+%     fclose(fidC);
+    
+    % Create new config.mat
+    caraslab_createconfig(Savedir,chanMap,0, badchannels, 1, full_output_dir)
+    load(fullfile(full_output_dir, 'config.mat'));
+    ops.concat_tranges = tranges;
+    ops.concat_cumulative_tranges = cumulative_tranges;
+    
+    save(fullfile(full_output_dir, 'config.mat'), 'ops');
+    
     tEnd = toc(t0);
     fprintf('\nDone in: %d minutes and %f seconds\n', floor(tEnd/60), rem(tEnd,60));
 end

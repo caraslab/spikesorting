@@ -6,7 +6,7 @@
 % (unfiltered) and cleaned data streams are created
 
 % Note that this pipeline was designed to be modular, i.e. you run one bit
-% at a time and you can add/remove/replace modules
+% at a time and you can add/remove/replace modules 
 
 % Written by ML Caras
 % Patched by M Macedo-Lima 8/9/20
@@ -39,27 +39,10 @@
 % rootH: path for temp Kilosort file. Should be a fast SSD
 
 Tankdir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/TDT tank/SUBJ-ID-13-200125-124647';
-% 
-Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-13-200125-124647';  % NNBuz5x1264
-Probetype = 'NNBuz5x1264'; 
-badchannels = [64];
-% 
-% Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-14-200126-125925';  %NNBuz5x1264
-% Probetype = 'NNBuz5x1264'; 
-% badchannels = [64];
-% % 
-% Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-26-200614-103221'; % NNA4x16Lin64; badchannels: 36,44,47,52,58,59,64
-% Probetype = 'NNA4x16Lin64'; 
-% badchannels = [36,44,47,52,55,58,59,64];
-% 
-% 
-% Savedir = '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-27-200614-104657';  % NNA2x32; badchannels: 58:63
-% Probetype = 'NNA2x32'; 
-% badchannels = [55,58:64];
-% % % 
-% Savedir =  '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-28-200615-141009'; %NNA4x16Lin64; badchannels: 8,10
-% Probetype = 'NNA4x16Lin64';
-% badchannels = [8,10,55,64];
+
+Savedir =  '/mnt/132bfc10-ead6-48da-986e-007a5a3d1d87/Matt/Sorted/SUBJ-ID-28-200615-141009'; %NNA4x16Lin64; badchannels: 8,10, 55; ground: 64
+Probetype = 'NNA4x16Lin64';
+badchannels = [8,10,55,64];
 
 
 chanMapSavedir = '/home/caras/Documents/Matt/Spike sorting code/channelmaps';
@@ -102,6 +85,8 @@ caraslab_createChannelMap(chanMapSavedir,Probetype);
 %               sampling rate, epocs, and timing
 caraslab_reformat_synapse_data(Tankdir,Savedir,sel);
 
+%% TODO: INSERT BEHAV PIPELINE INSTRUCTIONS HERE
+
 %% 3. CREATE KILOSORT CONFIGURATION FILE
 % This function sets configuration parameters for kilosort. It also
 %   establishes the binary path for each future binary dataset.
@@ -130,7 +115,14 @@ caraslab_mat2dat(Savedir,sel)
 caraslab_preprocessdat(Savedir, sel)
 
 %% 6. CONCATENATE SAME DAY RECORDINGS
-caraslab_concatenate_sameDay_recordings(Savedir,sel)
+% This function searches the recording folders and concatenates *CLEAN.dat files
+% within folders that have the same date in order of session number. A new file and directory will be
+% created with Date_concat name (e.g. 201125_concat).
+% This function also creates a config.mat within each concat folder with
+% some useful parameters about the concatenation; plus it outputs a csv
+% file with the continuous breakpoints where one file ends and another
+% starts
+caraslab_concatenate_sameDay_recordings(Savedir,sel, chanMap, badchannels)
 
 %% 7. CONCATENATE SAME DEPTH RECORDINGS ACROSS DAYS
 % % not currently in use
@@ -138,14 +130,17 @@ caraslab_concatenate_sameDay_recordings(Savedir,sel)
 % NT = 32832;  % A reasonable batch size. Reduce if out of memory
 % caraslab_concatenate_sameDepth_recordings(Savedir, sel, NchanTOT, NT)
 
-%% 8. Create config in new folders
-% Necessary to run kilosort on concatenated folders
-caraslab_createconfig(Savedir,chanMap,sel, badchannels, 1)
-
-%% 9. RUN KILOSORT
+%% 8. RUN KILOSORT
 %   This function runs kilosort on the selected data.
 % rootH is the path to the kilosort temp file; Better if a fast SSD
 caraslab_kilosort(Savedir, sel, rootH)
+
+%% 9. REMOVE DOUBLE-COUNTED SPIKES
+% This function removes potential double-counted spikes detected by
+% kilosort within one cluster and among clusters of the same shank (spikes within 0.15 ms are deleted)
+% Can be run either right after kilosort or after manual curation.
+% Adapted from the Allen Brain Institute github
+remove_double_counted_spikes(Savedir, sel, 1)
 
 %% 10. GO HAVE FUN IN PHY!
 %         _             _   _                _ 
@@ -166,7 +161,7 @@ caraslab_kilosort(Savedir, sel, rootH)
 % also refilter the data with a 300-6000Hz bandpass filter and save a new
 % ~~CLEAN300Hz.dat 
 show_plots = 1;
-filter_300hz = 1;
+filter_300hz = 0;
 get_timestamps_and_wf_measurements(Savedir, sel, show_plots, filter_300hz)
 
 %% 12. EXTRACT WAVEFORMS PLOTS WITH PROBE GEOMETRY
@@ -177,3 +172,18 @@ get_timestamps_and_wf_measurements(Savedir, sel, show_plots, filter_300hz)
 show_plots = 1;
 filter_300hz = 0;
 plot_unit_shanks(Savedir, sel, show_plots, filter_300hz)
+
+%% 13. QUALITY METRICS
+% This function runs 3 quality control metrics on the curated clusters:
+% 1. ISI violation false positive rate: how many false positive spikes in a
+%   cluster. Good units < 0.5
+% 2. Fraction of spikes missing: based on the probability distribution of 
+%   spikes detected for a unit, how many are estimated to be missing? Good
+%   units < 0.1
+% 3. Presence ratio: for how much of the recording is a unit present? The
+%   recording time is divided in 100 bins and the fraction of bins with at
+%   least one spike present is calculated. Good units > 0.9
+% Adapted from the Allen Brain Institute github
+show_plots = 1;
+filter_300hz = 0;
+cluster_quality_metrics(Savedir, sel, show_plots, filter_300hz)
