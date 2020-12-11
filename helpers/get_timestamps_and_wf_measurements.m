@@ -53,7 +53,8 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
 
         %Start timer
         t0 = tic;
-        
+        fprintf('Outputting timestamps and measuring waveforms for: %s\n', cur_savedir)
+
         % Delete old timestamp files in folder
         old_timestamps = dir([cur_savedir '/*cluster*txt']);
         for i=1:numel(old_timestamps)
@@ -336,5 +337,8 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
             end
         end
         writetable(TT, fullfile(gwfparams.dataDir, 'CSV files', [prename '_waveform_measurements.csv']));
+                
+        tEnd = toc(t0);
+        fprintf('Done in: %d minutes and %f seconds\n', floor(tEnd/60), rem(tEnd,60));
     end
 end

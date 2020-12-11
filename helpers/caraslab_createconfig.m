@@ -1,4 +1,4 @@
-function caraslab_createconfig(Savedir,chanMap,sel, badchannels, fetch_tstart_from_behav)
+function caraslab_createconfig(Savedir,chanMap,sel, badchannels, fetch_tstart_from_behav, single_dir)
 %
 % This function sets configuration parameters for kilosort.
 % 
@@ -39,19 +39,27 @@ if ~exist(chanMap,'file')
     return
 end
 
-if ~sel
-    %Get a list of all BLOCKS in the tank directory
-    datafolders = caraslab_lsdir(Savedir);
-    datafolders = {datafolders.name};
-
-elseif sel  
-    %Prompt user to select folder
-    datafolders_names = uigetfile_n_dir(Savedir,'Select data directory');
+if nargin > 5
+    sel = 0;
     datafolders = {};
-    for i=1:length(datafolders_names)
-        [~, datafolders{end+1}, ~] = fileparts(datafolders_names{i});
+    [~, datafolders{end+1}, ~] = fileparts(single_dir);
+else
+    if ~sel
+        %Get a list of all BLOCKS in the tank directory
+        datafolders = caraslab_lsdir(Savedir);
+        datafolders = {datafolders.name};
+
+    elseif sel  
+        %Prompt user to select folder
+        datafolders_names = uigetfile_n_dir(Savedir,'Select data directory');
+        datafolders = {};
+        for i=1:length(datafolders_names)
+            [~, datafolders{end+1}, ~] = fileparts(datafolders_names{i});
+        end
     end
 end
+    
+
 
 %Load in the channel map and identify bad channels
 chandata = load(chanMap);
