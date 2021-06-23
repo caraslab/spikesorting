@@ -77,6 +77,7 @@ end
 
 %For each block
 for i = 1:numel(BLOCKNAMES)
+    t0 = tic;
     cur_path.name = BLOCKNAMES{i};
     cur_savedir = [Savedir filesep cur_path.name];
     datafilename = fullfile(cur_savedir, [cur_path.name '.mat']);
@@ -100,11 +101,7 @@ for i = 1:numel(BLOCKNAMES)
     
     % Try to read file. If missing, skip to the next folder
     try
-        tic;
         epData = TDTbin2mat(FULLPATH,'TYPE',{'epocs','streams'});
-        tEnd = toc;
-        fprintf('\n~~~~~~\nFinished in: %d minutes and %f seconds\n~~~~~~\n', floor(tEnd/60),rem(tEnd,60));
-
     catch ME
         if strcmp(ME.identifier, 'MATLAB:load:couldNotReadFile')
             fprintf('\nFile not found\n')
@@ -144,32 +141,35 @@ for i = 1:numel(BLOCKNAMES)
         keyboard
     end
     
-    
-%--------------------------------------------------------------------------    
-% NOT CURRENTLY IN USE, BUT COULD BE IMPLEMENTED AT A LATER DATE
-%--------------------------------------------------------------------------    
-%Option for saving raw streams to csv file. Transpose such that each column
-%is one channel, and each row is one sample. This csv file can be used
-%later to create a datastore, and a tall array.
-%     csvfilename = [Savedir filesep BLOCKNAMES{i} '.csv'];
-%     fprintf('\nSaving CSV file %s...',[BLOCKNAMES,'.csv']);
-%     dlmwrite(csvfilename,epData.streams.RSn1.data','precision',7);
-%     fprintf('done.\n');
-%     
-%     %Remove the data from the epData structure
-%     epData.streams.RSn1.data = [];
-%     
-%     %Add the path to the -csv file to the epData structure
-%     epData.info.csvfile = csvfilename;
-%     
-%     %Save the -mat file containing epoch, sampling rate, and other
-%     %important information, but not the raw streams
-%     save(matfilename,'epData');
-%     fprintf('Saved MAT file %s',matfilename);
-%--------------------------------------------------------------------------    
+    tEnd = toc(t0);
+    fprintf('\n~~~~~~\nFinished in: %d minutes and %f seconds\n~~~~~~\n', floor(tEnd/60),rem(tEnd,60));
+
+    %--------------------------------------------------------------------------    
+    % NOT CURRENTLY IN USE, BUT COULD BE IMPLEMENTED AT A LATER DATE
+    %--------------------------------------------------------------------------    
+    %Option for saving raw streams to csv file. Transpose such that each column
+    %is one channel, and each row is one sample. This csv file can be used
+    %later to create a datastore, and a tall array.
+    %     csvfilename = [Savedir filesep BLOCKNAMES{i} '.csv'];
+    %     fprintf('\nSaving CSV file %s...',[BLOCKNAMES,'.csv']);
+    %     dlmwrite(csvfilename,epData.streams.RSn1.data','precision',7);
+    %     fprintf('done.\n');
+    %     
+    %     %Remove the data from the epData structure
+    %     epData.streams.RSn1.data = [];
+    %     
+    %     %Add the path to the -csv file to the epData structure
+    %     epData.info.csvfile = csvfilename;
+    %     
+    %     %Save the -mat file containing epoch, sampling rate, and other
+    %     %important information, but not the raw streams
+    %     save(matfilename,'epData');
+    %     fprintf('Saved MAT file %s',matfilename);
+    %--------------------------------------------------------------------------    
 
 
 end
+
 
 fprintf('\n\n ##### Finished reformatting and saving data files.\n\n')
 

@@ -77,7 +77,20 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
         gwfparams.rawDir = cur_savedir;
         gwfparams.sr = ops.fs;
         gwfparams.nCh = ops.NchanTOT; % Number of channels that were streamed to disk in .dat file
-        gwfparams.fileName = dir(ops.fclean).name; % .dat file containing the raw used for sorting
+        try
+            gwfparams.fileName = dir(ops.fclean).name; % .dat file containing the raw used for sorting
+        catch ME
+            if strcmp(ME.identifier, 'MATLAB:needMoreRhsOutputs') % this error might happen when file has been moved
+                % try to find the fclean file name within the cur_savedir
+                split_fclean_path = split(ops.fclean, '/');
+                fclean = split_fclean_path{end};
+                gwfparams.fileName = dir(fullfile(cur_savedir, fclean)).name; % .dat file containing the raw used for sorting
+                % Update ops
+                ops.fclean = fullfile(cur_savedir, fclean);
+                save(fullfile(cur_savedir, 'config.mat'), 'ops');
+                gwfparams.ops = ops;
+            end
+        end
         gwfparams.dataType = 'int16'; % Data type of .dat file (this should be BP filtered)
 
         gwfparams.wfWin = [round(-(0.001*gwfparams.sr)) round(0.003*gwfparams.sr)]; % Number of samples before and after spiketime to include in waveform
@@ -117,7 +130,7 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
 
         % Save averages to .mat file
         % Useful in case you want to replot using BETTER software, i.e. Python
-        save(fullfile(gwfparams.dataDir, 'CSV files', 'waveform_averages.mat'), 'wf');
+        save(fullfile(gwfparams.dataDir, 'CSV files', [prename '_waveform_averages.mat']), 'wf', '-v7.3');
 
         %% OUTPUT from getWaveforms looks like this:
         % wf.unitIDs                               % [nClu,1]            List of cluster IDs; defines order used in all wf.* variables
@@ -144,15 +157,30 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
         for wf_idx=1:length(good_cluster_idx)
             cluster_phy_id = good_cluster_idx(wf_idx);
 
-            % Grab channel with highest amplitude for this unit
-            best_channel = gwfparams.cluster_quality.ch(gwfparams.cluster_quality.cluster_id == cluster_phy_id);
+            % Get channel with highest amplitude for this unit
+            % This usually works but sometimes phy fails at detecting the best
+            % channel, so let's do it manually
+    %         best_channel = gwfparams.cluster_quality.ch(...
+    %             gwfparams.cluster_quality.cluster_id == cluster_phy_id);
+
+            temp_wfs = wf.waveFormsMean(wf_idx, :,:);
+            temp_wfs = abs(temp_wfs);
+
+            [max_amplitude, ~] = max(temp_wfs, [], 3);
+            clear temp_wfs
+
+            [~, best_channel] = max(max_amplitude);
+            best_channel_0in = best_channel - 1;
+
+            % Grab best channel index
+            best_channel_idx = find(gwfparams.chanMap == best_channel_0in);
             
             % Store channel and shank info
-            best_channels_csv(wf_idx) = best_channel + 1;
+            best_channels_csv(wf_idx) = best_channel_0in + 1;
             shanks(wf_idx) = gwfparams.cluster_quality.sh(gwfparams.cluster_quality.cluster_id == cluster_phy_id);  
             
             % Grab best channel index
-            best_channel_idx = find(gwfparams.chanMap == best_channel);
+            best_channel_idx = find(gwfparams.chanMap == best_channel_0in);
             
             % Store cluster quality
             cluster_quality_char = gwfparams.cluster_quality.group(gwfparams.cluster_quality.cluster_id == cluster_phy_id);
@@ -165,13 +193,17 @@ function get_timestamps_and_wf_measurements(Savedir, sel, show_plots, bp_filter)
             cur_wfs = squeeze(cur_wfs);
             cur_wf_mean = wf.waveFormsMean(wf_idx, best_channel_idx,:);
             cur_wf_mean = squeeze(cur_wf_mean);
+            
+            if isnan(mean(cur_wf_mean))
+                continue  % sometimes waveforms are NaN which is weird...
+            end
 
             % Recenter average at zero
             cur_wf_mean = cur_wf_mean - mean(cur_wf_mean(1:5));
 
             %% Write spike times to txt file
             fileID = fopen(fullfile(gwfparams.dataDir, [prename '_cluster' int2str(cluster_phy_id) '.txt']), 'w');
-            fprintf(fileID, '%d\n', (double(wf.allSpikeTimePoints{wf_idx}) / gwfparams.sr));
+            fprintf(fileID, '%.6f\n', (double(wf.allSpikeTimePoints{wf_idx}) / gwfparams.sr));
             fclose(fileID);
 
             %% Continue calculations

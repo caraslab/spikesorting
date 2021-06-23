@@ -18,7 +18,15 @@ function [fraction_missing, h, b, G] = amplitude_cutoff(wfs)
         cur_amp = cur_amp(1) - mean(wfs(dummy_idx, 1:10));
         amplitudes(dummy_idx) = cur_amp;
     end
-
+    
+    % MML edit:
+    % Occasionally a waveform will be inverted; check the mean of
+    % amplitudes and if it's >0, it probably means the waveform peak is
+    % above 0, so invert the amplitude values;
+    if mean(amplitudes) > 0
+        amplitudes = -amplitudes;
+    end
+    
     [h, b] = histcounts(amplitudes, 500, 'Normalization', 'pdf');
 
     pdf = conv(h,  gausswin(3));

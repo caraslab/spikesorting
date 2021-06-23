@@ -1,4 +1,4 @@
-function [signal] = caraslab_artifact_reject(signal)
+function [signal] = caraslab_artifact_reject(signal, std_threshold)
 warning('off','all')
 %[finalsignal,rejectthresh] = caraslab_artifact_reject(rawsignal,fs)
 %
@@ -55,21 +55,21 @@ win = 244;
 %---------------------------------------------------------------------
 %First cleaning pass
 % fprintf('First pass artifact rejection...\n')
-signal = rm_artifacts(signal,numchans,win);
+signal = rm_artifacts(signal,numchans,win, std_threshold);
 
 %---------------------------------------------------------------------
 %Second cleaning pass
 %  fprintf('First pass artifact rejection...\n')
-signal = rm_artifacts(signal,numchans,win);
+signal = rm_artifacts(signal,numchans,win, std_threshold);
 
 % TODO: turn this into a parfor function?
 % TODO2: after median and std are taken, it can be chunked and GPU-based...
-function [sig] = rm_artifacts(sig,numchans,win)
+function [sig] = rm_artifacts(sig,numchans,win, std_threshold)
     %Find all the peaks (spikes and artifacts) greater than 50 std above noise (might need to be tweaked)
     % stdbkg = median((abs(sig)/0.6745));
     abs_sig_median = median(abs(sig), 1);
     abs_sig_std = std(abs(sig), [], 1);
-    thresh = abs_sig_median + 50*abs_sig_std;
+    thresh = abs_sig_median + std_threshold*abs_sig_std;
     
     % To replace the artifacts with median signal noise
     sig_median = median(sig, 1);
