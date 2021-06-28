@@ -45,12 +45,12 @@ function  [igood] = caraslab_rms_badChannels(sig)
     badchans = [];
     if ~isempty(toohigh)
         badchans = [badchans; toohigh];
-        fprintf('RMS noise floor of channel(s) %d exceeds maximum allowed! Removed from analysis!\n',toohigh)
+        fprintf('RMS noise of channel(s) %d is too high! Removed from analysis!\n',toohigh)
     end
 
     if ~isempty(toolow)
         badchans = [badchans; toolow];
-        fprintf('RMS noise floor of channel(s) %d is below minimum allowed! Removed from analysis!\n',toolow)
+        fprintf('RMS noise of channel(s) %d is too low! Removed from analysis!\n',toolow)
     end
 
     %Remove redundant channels

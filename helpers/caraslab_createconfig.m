@@ -1,4 +1,4 @@
-function caraslab_createconfig(Savedir,chanMap,sel, badchannels, fetch_tstart_from_behav, single_dir)
+function caraslab_createconfig(Savedir,chanMap,sel, badchannels, fetch_tstart_from_behav, recording_type, single_dir)
 %
 % This function sets configuration parameters for kilosort.
 % 
@@ -33,13 +33,15 @@ function caraslab_createconfig(Savedir,chanMap,sel, badchannels, fetch_tstart_fr
 %Written by ML Caras Mar 26 2019
 % Patched by M Macedo-Lima 9/8/20
 
+%% Don't edit this; keep scrolling
+
 %Check that channel map exists
 if ~exist(chanMap,'file')
     fprintf('\nCannot find channel map!\n')
     return
 end
 
-if nargin > 5
+if nargin > 6
     sel = 0;
     datafolders = {};
     [~, datafolders{end+1}, ~] = fileparts(single_dir);
@@ -81,9 +83,14 @@ for i = 1:numel(datafolders)
         ops.fs = temp.epData.streams.RSn1.fs;
         ops.NchanTOT = numel(temp.epData.streams.RSn1.channels);    %both active and dead
     catch ME
-        if strcmp(ME.identifier, 'MATLAB:load:couldNotReadFile')
+        if strcmp(ME.identifier, 'MATLAB:load:couldNotReadFile') || strcmp(ME.identifier, 'MATLAB:nonExistentField')
 %             fprintf('\n-mat file not found')  % For concatenated recordings, this will fail. So just hard-code for now
-            ops.fs = 24414.0625;
+            switch recording_type
+                case 'synapse'
+                    ops.fs = 24414.0625;
+                case 'intan'
+                    ops.fs = 30000;
+            end
             ops.NchanTOT = 64;
         else
             fprintf(ME.identifier)
@@ -95,8 +102,9 @@ for i = 1:numel(datafolders)
     %Save the path to the -mat data file (contains raw voltage data)
     ops.rawdata = matfilename;
     
+    %% Edit these if necessary
     % nt0 is the number of points for template matching
-    % The default on Kilosort is 61, equivalent to 2 ms for a 30 kHz sampling
+    % The default on Kilosort is 61, equivalent to ~2 ms for a 30 kHz sampling
     % If you start seeing double spikes in phy, consider reducing this
     ops.nt0 = round(ops.fs * 0.002);
     
@@ -113,9 +121,10 @@ for i = 1:numel(datafolders)
     
     ops.deline = 0;  % Fails too often; use comb for now
     
-    ops.comb = 0;  % Comb filter before highpass
+    ops.comb = 1;  % Comb filter before highpass
     
-    ops.rm_artifacts = 1;
+    ops.rm_artifacts = 1;  % Remove super high amplitude events
+    ops.std_threshold = 50;
     
     ops.Nchan = ops.NchanTOT - numel(badchannels);              %number of active channels
 
@@ -153,7 +162,7 @@ for i = 1:numel(datafolders)
     % threshold crossings for pre-clustering (in PCA projection space) (8)
     ops.ThPre = 4;  % This at 4 helps recordings not crash for finding too few spikes
         
-    %% danger, changing these settings can lead to fatal errors
+    %% danger, changing these settings can lead to fatal errors; Edit  if you know what you're doing
     % options for determining PCs
     ops.spkTh           = -6;      % spike threshold in standard deviations (-6)
     ops.reorder         = 1;       % whether to reorder batches for drift correction. 

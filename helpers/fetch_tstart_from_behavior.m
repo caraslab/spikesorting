@@ -17,7 +17,15 @@ try
         tstart = behav_table.Spout_onset(1);
     else
         behav_file = dir(fullfile(csv_dir, '*trialInfo.csv'));
-
+        
+        % Do something funy here to get around having behavioral files
+        % inside the concat folders. Throw an exception if behav_file has
+        % more than one item; It is a 'silent' exception caught below
+        if length(behav_file) > 1
+            ME = MException('MATLAB:narginchk:notEnoughInputs', ...
+                'Processing a concatenated file folder...');
+            throw(ME)
+        end
         behav_table = readtable(fullfile(behav_file.folder, behav_file.name));
 
         tstart = behav_table.Trial_onset(1);

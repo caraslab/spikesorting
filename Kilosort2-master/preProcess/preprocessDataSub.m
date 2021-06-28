@@ -37,6 +37,7 @@ if getOr(ops, 'minfr_goodchannels', .1)>0 % discard channels that have very few 
     if isfield(ops, 'igood')
         igood = logical(gather(igood .* ops.igood));
     end
+    
 % % MML edit: in case igood already exists, grab that
 elseif isfield(ops, 'igood')
     igood = logical(ops.igood);
@@ -48,6 +49,11 @@ end
 if isfield(ops, 'badchannels')
     igood(ops.badchannels) = 0;
 end
+
+% For some reason, Kilosort2 works better when NOT excluding bad channels;
+% Therefore, revert that exclusion here. The pipeline somewhat handles this by
+% changing bad channels into gaussian noise before running kilosort
+igood = true(size(chanMap));  
 
 chanMap = chanMap(igood); %it's enough to remove bad channels from the channel map, which treats them as if they are dead
 

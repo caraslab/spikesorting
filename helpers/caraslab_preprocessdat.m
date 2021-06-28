@@ -36,7 +36,7 @@ end
 
 %For each data folder...
 for i = 1:numel(datafolders)
-    clear ops temp dat matfile temp_raw
+    clear ops
     
     cur_path.name = datafolders{i};
     cur_savedir = [Savedir filesep cur_path.name];
@@ -61,7 +61,7 @@ for i = 1:numel(datafolders)
     % Load config paramaters
     [chanMap, ~, ~, ~, NchanTOTdefault] = loadChanMap(ops.chanMap); % function to load channel map file
     ops.NchanTOT = getOr(ops, 'NchanTOT', NchanTOTdefault); % if NchanTOT was left empty, then overwrite with the default
-    
+    std_threshold = ops.std_threshold;
     NchanTOT = ops.NchanTOT; % total number of channels in the raw binary file, including dead, auxiliary etc
     % MML edit
     if isfield(ops, 'igood')
@@ -114,6 +114,7 @@ for i = 1:numel(datafolders)
     
 
     for ibatch = 1:Nbatch
+        clear buff dataRAW datr noiseBuff
         % we'll create a binary file of batches of NT samples, which overlap consecutively on ops.ntbuff samples
         % in addition to that, we'll read another ops.ntbuff samples from before and after, to have as buffers for filtering
         % MML edit: this part is weird in the original kilosort2 code so I
@@ -175,7 +176,7 @@ for i = 1:numel(datafolders)
 %             fprintf('Removing artifacts.......\n')
 %             t0 = tic;
             warning off;
-            datr = caraslab_artifact_reject(datr);
+            datr = caraslab_artifact_reject(datr, std_threshold);
             warning on;
 %             tEnd = toc(t0);
 %             fprintf('Finished in: %d minutes and %f seconds\n', floor(tEnd/60),rem(tEnd,60));
@@ -192,15 +193,27 @@ for i = 1:numel(datafolders)
             if ops.tstart > 0
                 % Gather on CPU side right away because GPU might run out
                 % of memory
-                first_median = gather(double(median(datr, 2)));
-                first_std = gather(double(std(datr, [], 2)));
+                
+                % take median of medians of good channels
+                first_median = gather(double(median(median(datr(chanMap(igood), :), 2))));
+                % take median std of good channels
+                first_std = gather(double(median(std(datr(chanMap(igood), :), [], 2))));
                 fseek(fid, 0, 'bof'); % fseek to batch start in raw file
                 noiseBuff = fread(fid, [NchanTOT ops.tstart-1], 'int16'); % read and reshape. Assumes int16 data (which should perhaps change to an option)
                 
-                noiseBuff =  first_std.*randn(size(noiseBuff)) + first_median;
+                noiseBuff =  first_std*randn(size(noiseBuff)) + first_median;
                 fwrite(fidC, noiseBuff, 'int16'); % write this batch to clean file
             end
         end
+        
+        % Convert noisy channels to gaussian noise
+        
+        % take median of medians of good channels
+        cur_median = gather(double(median(median(datr(chanMap(igood), :), 2))));
+        % take median std of good channels
+        cur_std = gather(double(median(std(datr(chanMap(igood), :), [], 2))));
+        
+        datr(chanMap(~igood), :) = gpuArray(cur_std*randn(sum(~igood), size(datr, 2)) + cur_median);
 
         datr  = gather(int16(datr)); % convert to int16, and gather on the CPU side
         
